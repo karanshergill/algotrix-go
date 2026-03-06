@@ -1,4 +1,4 @@
-package symbols
+package models
 
 type Symbol struct {
     FyToken int64  `json:"fy_token"`

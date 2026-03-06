@@ -10,7 +10,7 @@ import (
 
     "github.com/karanshergill/algotrix-go/internal/auth"
     "github.com/karanshergill/algotrix-go/internal/config"
-    "github.com/karanshergill/algotrix-go/database"
+    "github.com/karanshergill/algotrix-go/database/connections"
     "github.com/karanshergill/algotrix-go/symbols"
 )
 
@@ -54,24 +54,24 @@ func main() {
     // --- Database connections ---
     ctx := context.Background()
 
-    dbCfg, err := database.LoadDBConfig("database/db.yaml")
+    dbCfg, err := connections.LoadDBConfig("database/connections/db.yaml")
     if err != nil {
         log.Fatal("Failed to load db config: ", err)
     }
 
-    pgPool, err := database.NewPostgresPool(ctx, &dbCfg.Postgres)
+    pgPool, err := connections.NewPostgresPool(ctx, &dbCfg.Postgres)
     if err != nil {
         log.Fatal("Postgres connection failed: ", err)
     }
     defer pgPool.Close()
 
-    qdbPool, err := database.NewQuestDBPool(ctx, &dbCfg.QuestDB)
+    qdbPool, err := connections.NewQuestDBPool(ctx, &dbCfg.QuestDB)
     if err != nil {
         log.Fatal("QuestDB connection failed: ", err)
     }
     defer qdbPool.Close()
 
-    qdbSender, err := database.NewQuestDBSender(ctx, &dbCfg.QuestDB)
+    qdbSender, err := connections.NewQuestDBSender(ctx, &dbCfg.QuestDB)
     if err != nil {
         log.Fatal("QuestDB ILP connection failed: ", err)
     }

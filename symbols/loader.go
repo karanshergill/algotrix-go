@@ -10,12 +10,13 @@ import (
     "strconv"
     "time"
 
+    "github.com/karanshergill/algotrix-go/models"
     "github.com/jackc/pgx/v5"
     "github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Download fetches the CSV and parses it into Symbol structs.
-func Download() ([]Symbol, error) {
+func Download() ([]models.Symbol, error) {
     client := &http.Client{Timeout: 30 * time.Second}
 
     resp, err := client.Get(CSVURL)
@@ -31,7 +32,7 @@ func Download() ([]Symbol, error) {
     reader := csv.NewReader(resp.Body)
     reader.FieldsPerRecord = -1 // variable fields
 
-    var symbols []Symbol
+    var symbols []models.Symbol
 
     for {
         record, err := reader.Read()
@@ -53,7 +54,7 @@ func Download() ([]Symbol, error) {
             continue
 		}
 
-        symbols = append(symbols, Symbol{
+        symbols = append(symbols, models.Symbol{
             FyToken: fyToken,
             Symbol:  record[idxSymbol],
             Name:    record[idxName],
@@ -66,7 +67,7 @@ func Download() ([]Symbol, error) {
 }
 
 // Upsert loads symbols into the database using batch upsert.
-func Upsert(ctx context.Context, pool *pgxpool.Pool, syms []Symbol) (int64, error) {
+func Upsert(ctx context.Context, pool *pgxpool.Pool, syms []models.Symbol) (int64, error) {
     query := fmt.Sprintf(`
         INSERT INTO %s (%s, %s, %s, %s)
         VALUES (@%s, @%s, @%s, @%s)
