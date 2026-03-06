@@ -1,0 +1,14 @@
+postgres:
+  host: "localhost"
+  port: "5432"
+  user: "me"
+  password: "algotrix"
+  database: "algotrix"
+
+questdb:
+  host: "localhost"
+  port: "8812"
+  user: "admin"
+  password: "quest"
+  database: "qdb"
+  ilp_port: "9009"
