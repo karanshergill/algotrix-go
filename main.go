@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/karanshergill/algotrix-go/data/history"
 	"github.com/karanshergill/algotrix-go/data/nse"
 	"github.com/karanshergill/algotrix-go/database/connections"
 	"github.com/karanshergill/algotrix-go/database/operations"
@@ -24,9 +27,18 @@ func main() {
 	}
 
 	// Check for subcommands.
-	if len(os.Args) > 1 && os.Args[1] == "scrips" {
-		runScrips()
-		return
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "scrips":
+			runScrips()
+			return
+		case "ohlcv":
+			runOHLCV()
+			return
+		case "ohlcv5s":
+			runOHLCV5s()
+			return
+		}
 	}
 
 	a := auth.New(cfg.Fyers)
@@ -175,4 +187,260 @@ func runScrips() {
 	}
 
 	fmt.Printf("\nDone. Success: %d, Skipped: %d, Failed: %d\n", success, skipped, failed)
+}
+
+// runOHLCV fetches daily OHLCV from Fyers and writes to QuestDB.
+// Usage: go run . ohlcv                          (all scrips, default 366 days)
+//        go run . ohlcv --symbol SBIN             (single stock test)
+//        go run . ohlcv --days 30                 (last 30 days, all scrips)
+//        go run . ohlcv --symbol SBIN --days 10   (single stock, 10 days)
+func runOHLCV() {
+	ctx := context.Background()
+
+	// Parse flags.
+	var singleSymbol string
+	days := 366 // default: max 1 year for daily resolution
+	for i, arg := range os.Args {
+		if arg == "--symbol" && i+1 < len(os.Args) {
+			singleSymbol = os.Args[i+1]
+		}
+		if arg == "--days" && i+1 < len(os.Args) {
+			d, err := strconv.Atoi(os.Args[i+1])
+			if err != nil {
+				log.Fatalf("Invalid --days value: %s", os.Args[i+1])
+			}
+			if d < 1 || d > 366 {
+				log.Fatal("--days must be between 1 and 366 for daily resolution")
+			}
+			days = d
+		}
+	}
+
+	// Fyers auth.
+	cfg, err := config.Load("internal/config/fyers.yaml")
+	if err != nil {
+		log.Fatal(err)
+	}
+	a := auth.New(cfg.Fyers)
+	if err := a.LoadToken(); err != nil {
+		log.Fatal("No valid Fyers token. Run auth first.")
+	}
+	if err := a.Validate(); err != nil {
+		log.Fatal("Fyers token invalid: ", err)
+	}
+	authToken := a.AccessToken()
+
+	// DB connections.
+	dbCfg, err := connections.LoadDBConfig("database/connections/db.yaml")
+	if err != nil {
+		log.Fatal(err)
+	}
+	pgPool, err := connections.NewPostgresPool(ctx, &dbCfg.Postgres)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer pgPool.Close()
+
+	qdbSender, err := connections.NewQuestDBSender(ctx, &dbCfg.QuestDB)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer qdbSender.Close(ctx)
+
+	// Date range based on --days flag.
+	now := time.Now()
+	dateTo := now
+	dateFrom := now.AddDate(0, 0, -days)
+
+	// Build symbol list: need Fyers symbol + ISIN pairs.
+	type symPair struct {
+		fySymbol string
+		isin     string
+	}
+	var pairs []symPair
+
+	if singleSymbol != "" {
+		// Look up ISIN from nse_cm_symbols.
+		var isin string
+		err := pgPool.QueryRow(ctx,
+			"SELECT isin FROM nse_cm_symbols WHERE symbol = 'NSE:' || $1 || '-EQ'",
+			singleSymbol).Scan(&isin)
+		if err != nil {
+			log.Fatalf("Symbol %s not found: %v", singleSymbol, err)
+		}
+		pairs = []symPair{{fySymbol: "NSE:" + singleSymbol + "-EQ", isin: isin}}
+	} else {
+		// All scrips that have been loaded.
+		rows, err := pgPool.Query(ctx, `
+			SELECT s.symbol, sc.isin
+			FROM nse_cm_symbols s
+			JOIN nse_cm_scrips sc ON s.isin = sc.isin
+			WHERE s.symbol LIKE '%-EQ'
+			ORDER BY s.symbol
+		`)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var p symPair
+			if err := rows.Scan(&p.fySymbol, &p.isin); err != nil {
+				log.Fatal(err)
+			}
+			pairs = append(pairs, p)
+		}
+	}
+
+	fmt.Printf("Fetching daily OHLCV for %d symbols (%d days)...\n", len(pairs), days)
+
+	success, failed := 0, 0
+	for i, p := range pairs {
+		if i > 0 {
+			time.Sleep(350 * time.Millisecond) // Fyers rate limit: 10/sec, 200/min
+		}
+		candles, err := history.FetchDailyOHLCV(authToken, p.fySymbol, p.isin, dateFrom, dateTo)
+		if err != nil {
+			fmt.Printf("[%d/%d] FAIL %s: %v\n", i+1, len(pairs), p.fySymbol, err)
+			failed++
+			continue
+		}
+
+		if err := operations.WriteOHLCV(ctx, qdbSender, candles); err != nil {
+			fmt.Printf("[%d/%d] FAIL %s: write: %v\n", i+1, len(pairs), p.fySymbol, err)
+			failed++
+			continue
+		}
+
+		success++
+		fmt.Printf("[%d/%d] OK %s — %d candles\n", i+1, len(pairs), p.fySymbol, len(candles))
+	}
+
+	fmt.Printf("\nDone. Success: %d, Failed: %d\n", success, failed)
+}
+
+// runOHLCV5s fetches 5-second OHLCV from Fyers and writes to QuestDB.
+// Usage: go run . ohlcv5s                          (all scrips, default 1 day)
+//        go run . ohlcv5s --symbol SBIN             (single stock test)
+//        go run . ohlcv5s --days 30                 (last 30 days, all scrips — max for 5s)
+//        go run . ohlcv5s --symbol SBIN --days 5    (single stock, 5 days)
+func runOHLCV5s() {
+	ctx := context.Background()
+
+	// Parse flags.
+	var singleSymbol string
+	days := 1 // default: last 1 day for incremental refresh
+	for i, arg := range os.Args {
+		if arg == "--symbol" && i+1 < len(os.Args) {
+			singleSymbol = os.Args[i+1]
+		}
+		if arg == "--days" && i+1 < len(os.Args) {
+			d, err := strconv.Atoi(os.Args[i+1])
+			if err != nil {
+				log.Fatalf("Invalid --days value: %s", os.Args[i+1])
+			}
+			if d < 1 || d > 30 {
+				log.Fatal("--days must be between 1 and 30 for 5s resolution")
+			}
+			days = d
+		}
+	}
+
+	// Fyers auth.
+	cfg, err := config.Load("internal/config/fyers.yaml")
+	if err != nil {
+		log.Fatal(err)
+	}
+	a := auth.New(cfg.Fyers)
+	if err := a.LoadToken(); err != nil {
+		log.Fatal("No valid Fyers token. Run auth first.")
+	}
+	if err := a.Validate(); err != nil {
+		log.Fatal("Fyers token invalid: ", err)
+	}
+	authToken := a.AccessToken()
+
+	// DB connections.
+	dbCfg, err := connections.LoadDBConfig("database/connections/db.yaml")
+	if err != nil {
+		log.Fatal(err)
+	}
+	pgPool, err := connections.NewPostgresPool(ctx, &dbCfg.Postgres)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer pgPool.Close()
+
+	qdbSender, err := connections.NewQuestDBSender(ctx, &dbCfg.QuestDB)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer qdbSender.Close(ctx)
+
+	// Date range based on --days flag.
+	now := time.Now()
+	dateTo := now
+	dateFrom := now.AddDate(0, 0, -days)
+
+	// Build symbol list.
+	type symPair struct {
+		fySymbol string
+		isin     string
+	}
+	var pairs []symPair
+
+	if singleSymbol != "" {
+		var isin string
+		err := pgPool.QueryRow(ctx,
+			"SELECT isin FROM nse_cm_symbols WHERE symbol = 'NSE:' || $1 || '-EQ'",
+			singleSymbol).Scan(&isin)
+		if err != nil {
+			log.Fatalf("Symbol %s not found: %v", singleSymbol, err)
+		}
+		pairs = []symPair{{fySymbol: "NSE:" + singleSymbol + "-EQ", isin: isin}}
+	} else {
+		rows, err := pgPool.Query(ctx, `
+			SELECT s.symbol, sc.isin
+			FROM nse_cm_symbols s
+			JOIN nse_cm_scrips sc ON s.isin = sc.isin
+			WHERE s.symbol LIKE '%-EQ'
+			ORDER BY s.symbol
+		`)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var p symPair
+			if err := rows.Scan(&p.fySymbol, &p.isin); err != nil {
+				log.Fatal(err)
+			}
+			pairs = append(pairs, p)
+		}
+	}
+
+	fmt.Printf("Fetching 5s OHLCV for %d symbols (%d days)...\n", len(pairs), days)
+
+	success, failed := 0, 0
+	for i, p := range pairs {
+		if i > 0 {
+			time.Sleep(350 * time.Millisecond) // Fyers rate limit: 10/sec, 200/min
+		}
+		candles, err := history.Fetch5sOHLCV(authToken, p.fySymbol, p.isin, dateFrom, dateTo)
+		if err != nil {
+			fmt.Printf("[%d/%d] FAIL %s: %v\n", i+1, len(pairs), p.fySymbol, err)
+			failed++
+			continue
+		}
+
+		if err := operations.Write5sOHLCV(ctx, qdbSender, candles); err != nil {
+			fmt.Printf("[%d/%d] FAIL %s: write: %v\n", i+1, len(pairs), p.fySymbol, err)
+			failed++
+			continue
+		}
+
+		success++
+		fmt.Printf("[%d/%d] OK %s — %d candles\n", i+1, len(pairs), p.fySymbol, len(candles))
+	}
+
+	fmt.Printf("\nDone. Success: %d, Failed: %d\n", success, failed)
 }

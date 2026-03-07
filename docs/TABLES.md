@@ -39,15 +39,16 @@
 All OHLCV tables share the same schema:
 | Column | Type | Description |
 |--------|------|-------------|
-| ts | TIMESTAMP | Candle timestamp (designated timestamp) |
-| symbol | SYMBOL | Fyers symbol (e.g. NSE:SBIN-EQ) |
+| isin | SYMBOL | ISIN identifier (e.g. INE062A01020) |
 | open | DOUBLE | Open price |
 | high | DOUBLE | High price |
 | low | DOUBLE | Low price |
 | close | DOUBLE | Close price |
 | volume | LONG | Trade volume |
+| timestamp | TIMESTAMP | Candle timestamp (designated timestamp) |
 
 Partitioned by DAY for seconds/minutes, by MONTH for daily.
+Dedup upsert keys: (timestamp, isin) — prevents duplicate candles on re-runs.
 
 ## Symbol Tables (PostgreSQL)
 | Table | Description |
