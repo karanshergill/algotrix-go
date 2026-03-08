@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -421,28 +422,54 @@ func runOHLCV5s() {
 		}
 	}
 
-	fmt.Printf("Fetching 5s OHLCV for %d symbols (%d days)...\n", len(pairs), days)
+	// Split date range into 5-day chunks to keep memory usage low.
+	const chunkDays = 5
+	var chunks [][2]time.Time
+	chunkStart := dateFrom
+	for chunkStart.Before(dateTo) {
+		chunkEnd := chunkStart.AddDate(0, 0, chunkDays)
+		if chunkEnd.After(dateTo) {
+			chunkEnd = dateTo
+		}
+		chunks = append(chunks, [2]time.Time{chunkStart, chunkEnd})
+		chunkStart = chunkEnd
+	}
+
+	fmt.Printf("Fetching 5s OHLCV for %d symbols (%d days, %d chunks)...\n", len(pairs), days, len(chunks))
 
 	success, failed := 0, 0
 	for i, p := range pairs {
-		if i > 0 {
-			time.Sleep(350 * time.Millisecond) // Fyers rate limit: 10/sec, 200/min
-		}
-		candles, err := history.Fetch5sOHLCV(authToken, p.fySymbol, p.isin, dateFrom, dateTo)
-		if err != nil {
-			fmt.Printf("[%d/%d] FAIL %s: %v\n", i+1, len(pairs), p.fySymbol, err)
-			failed++
-			continue
+		totalCandles := 0
+		symbolFailed := false
+
+		for _, chunk := range chunks {
+			if i > 0 || chunk != chunks[0] {
+				time.Sleep(350 * time.Millisecond) // Fyers rate limit: 10/sec, 200/min
+			}
+			candles, err := history.Fetch5sOHLCV(authToken, p.fySymbol, p.isin, chunk[0], chunk[1])
+			if err != nil {
+				fmt.Printf("[%d/%d] FAIL %s: %v\n", i+1, len(pairs), p.fySymbol, err)
+				symbolFailed = true
+				break
+			}
+
+			if len(candles) > 0 {
+				if err := operations.Write5sOHLCV(ctx, qdbSender, candles); err != nil {
+					fmt.Printf("[%d/%d] FAIL %s: write: %v\n", i+1, len(pairs), p.fySymbol, err)
+					symbolFailed = true
+					break
+				}
+				totalCandles += len(candles)
+			}
 		}
 
-		if err := operations.Write5sOHLCV(ctx, qdbSender, candles); err != nil {
-			fmt.Printf("[%d/%d] FAIL %s: write: %v\n", i+1, len(pairs), p.fySymbol, err)
+		if symbolFailed {
 			failed++
-			continue
+		} else {
+			success++
+			fmt.Printf("[%d/%d] OK %s — %d candles\n", i+1, len(pairs), p.fySymbol, totalCandles)
 		}
-
-		success++
-		fmt.Printf("[%d/%d] OK %s — %d candles\n", i+1, len(pairs), p.fySymbol, len(candles))
+		runtime.GC() // free memory between symbols to prevent OOM
 	}
 
 	fmt.Printf("\nDone. Success: %d, Failed: %d\n", success, failed)
