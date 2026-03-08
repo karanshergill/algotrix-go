@@ -35,6 +35,18 @@ data_health:
     - '2026-03-20'  # Id-Ul-Fitr
     - '2026-03-30'  # Shri Mahavir Jayanti
   min_coverage_pct: 80
+  # Fyers API data availability limits per resolution
+  # Used by cross-resolution check to avoid false gap alerts
+  resolution_limits:
+    1d:
+      max_history_trading_days: 1000  # years of data available
+      per_request_days: 100
+    1m:
+      max_history_trading_days: 750   # ~3-4 years
+      per_request_days: 100
+    5s:
+      max_history_trading_days: 30    # hard Fyers limit
+      per_request_days: 30
   sources:
     - name: nse_cm_ohlcv_1d
       resolution: 1d

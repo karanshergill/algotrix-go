@@ -168,7 +168,7 @@ def check_per_stock_gaps(cfg, source):
     table = source["name"]
     nse_holidays = get_nse_holidays(cfg)
     rows = questdb_query(cfg, (
-        f"SELECT isin, count(DISTINCT cast(timestamp AS DATE)) AS day_count "
+        f"SELECT isin, count(DISTINCT timestamp_floor('d', timestamp)) AS day_count "
         f"FROM {table} GROUP BY isin"
     ))
     if not rows:
@@ -313,13 +313,19 @@ def check_cross_resolution_consistency(cfg, ref_isins):
         combo_counts[key] = combo_counts.get(key, 0) + 1
 
     # Date gaps: stocks in all tables but with mismatched day counts
-    # Find overlapping date range across all sources
+    # Compare only resolutions with the SAME max history limit (apples to apples)
+    # e.g. 5s (30-day limit) should not be compared against 1d (years of data)
+    res_limits = cfg.get("resolution_limits", {})
     date_gaps = []
+    date_gap_notes = []
+    compared_pairs = []
     if in_all:
-        overlap_start = None
-        overlap_end = None
+        # Group resolutions by comparable history depth
+        # Find the actual date range per source
+        source_ranges = {}  # res -> (first_day, last_day)
         for source in sources:
             table = source["name"]
+            res = source["resolution"]
             range_rows = questdb_query(cfg, (
                 f"SELECT min(cast(timestamp AS DATE)) AS first_day, "
                 f"max(cast(timestamp AS DATE)) AS last_day FROM {table}"
@@ -327,34 +333,66 @@ def check_cross_resolution_consistency(cfg, ref_isins):
             if range_rows:
                 fs = datetime.strptime(str(range_rows[0]["first_day"])[:10], "%Y-%m-%d").date()
                 ls = datetime.strptime(str(range_rows[0]["last_day"])[:10], "%Y-%m-%d").date()
-                overlap_start = max(overlap_start, fs) if overlap_start else fs
-                overlap_end = min(overlap_end, ls) if overlap_end else ls
+                source_ranges[res] = (fs, ls)
 
-        if overlap_start and overlap_end and overlap_start <= overlap_end:
-            # Get per-ISIN day counts within overlapping range for each source
-            isin_days = {}  # res -> {isin: day_count}
-            for source in sources:
-                table = source["name"]
-                res = source["resolution"]
-                rows = questdb_query(cfg, (
-                    f"SELECT isin, count(DISTINCT cast(timestamp AS DATE)) AS day_count "
-                    f"FROM {table} "
-                    f"WHERE timestamp >= '{overlap_start.isoformat()}' "
-                    f"AND timestamp <= '{overlap_end.isoformat()}T23:59:59.999999Z' "
-                    f"GROUP BY isin"
-                ))
-                isin_days[res] = {r["isin"]: int(r["day_count"]) for r in rows}
+        # For date gap comparison, group by similar max_history
+        # Compare each pair of resolutions only within their shared date range
+        # But skip pairs where the limits differ drastically (>2x)
+        compared_pairs = []
+        for i, s1 in enumerate(sources):
+            for s2 in sources[i+1:]:
+                r1, r2 = s1["resolution"], s2["resolution"]
+                l1 = res_limits.get(r1, {}).get("max_history_trading_days", 9999)
+                l2 = res_limits.get(r2, {}).get("max_history_trading_days", 9999)
+                # Only compare if limits are within 2x of each other
+                if max(l1, l2) > 2 * min(l1, l2):
+                    date_gap_notes.append(f"Skipping {r1} vs {r2} date gap check (different history limits: {l1} vs {l2} days)")
+                    continue
+                compared_pairs.append((s1, s2))
 
-            for isin in sorted(in_all):
-                counts = {}
-                for res in res_list:
-                    counts[res] = isin_days.get(res, {}).get(isin, 0)
-                values = list(counts.values())
-                if max(values) != min(values):
-                    entry = {"isin": isin}
-                    for res in res_list:
-                        entry[f"{res}_days"] = counts[res]
-                    date_gaps.append(entry)
+        # For comparable pairs, find per-ISIN day counts within overlap
+        if compared_pairs:
+            # Get the overlap range across comparable resolutions
+            comparable_res = set()
+            for s1, s2 in compared_pairs:
+                comparable_res.add(s1["resolution"])
+                comparable_res.add(s2["resolution"])
+
+            overlap_start = None
+            overlap_end = None
+            for res in comparable_res:
+                if res in source_ranges:
+                    fs, ls = source_ranges[res]
+                    overlap_start = max(overlap_start, fs) if overlap_start else fs
+                    overlap_end = min(overlap_end, ls) if overlap_end else ls
+
+            if overlap_start and overlap_end and overlap_start <= overlap_end:
+                isin_days = {}  # res -> {isin: day_count}
+                for source in sources:
+                    res = source["resolution"]
+                    if res not in comparable_res:
+                        continue
+                    table = source["name"]
+                    rows = questdb_query(cfg, (
+                        f"SELECT isin, count(DISTINCT timestamp_floor('d', timestamp)) AS day_count "
+                        f"FROM {table} "
+                        f"WHERE timestamp >= '{overlap_start.isoformat()}' "
+                        f"AND timestamp <= '{overlap_end.isoformat()}T23:59:59.999999Z' "
+                        f"GROUP BY isin"
+                    ))
+                    isin_days[res] = {r["isin"]: int(r["day_count"]) for r in rows}
+
+                comparable_list = sorted(comparable_res)
+                for isin in sorted(in_all):
+                    counts = {}
+                    for res in comparable_list:
+                        counts[res] = isin_days.get(res, {}).get(isin, 0)
+                    values = list(counts.values())
+                    if values and max(values) != min(values):
+                        entry = {"isin": isin}
+                        for res in comparable_list:
+                            entry[f"{res}_days"] = counts[res]
+                        date_gaps.append(entry)
 
     # Print results
     print(f"\n{'='*60}")
@@ -366,19 +404,26 @@ def check_cross_resolution_consistency(cfg, ref_isins):
     print(f"  Partial missing:                {len(total_partial)}")
     for desc, count in sorted(combo_counts.items()):
         print(f"    {desc}: {count:>6}")
-    print(f"  Date gaps (in all, mismatched days): {len(date_gaps)} stocks")
+    for note in date_gap_notes:
+        print(f"  ℹ {note}")
+    comparable_list = sorted(set(r for s1, s2 in compared_pairs for r in [s1["resolution"], s2["resolution"]])) if compared_pairs else []
+    print(f"  Date gaps (comparable resolutions only): {len(date_gaps)} stocks")
     for entry in date_gaps[:15]:
         parts = []
         max_days = 0
-        for res in res_list:
-            d = entry[f"{res}_days"]
-            parts.append(f"{res}={d}")
-            max_days = max(max_days, d)
+        for res in comparable_list:
+            key = f"{res}_days"
+            if key in entry:
+                d = entry[key]
+                parts.append(f"{res}={d}")
+                max_days = max(max_days, d)
         detail_parts = []
-        for res in res_list:
-            d = entry[f"{res}_days"]
-            if d < max_days:
-                detail_parts.append(f"{max_days - d} days missing in {res}")
+        for res in comparable_list:
+            key = f"{res}_days"
+            if key in entry:
+                d = entry[key]
+                if d < max_days:
+                    detail_parts.append(f"{max_days - d} days missing in {res}")
         detail = f" ({', '.join(detail_parts)})" if detail_parts else ""
         print(f"    {entry['isin']}: {', '.join(parts)}{detail}")
     if len(date_gaps) > 15:
