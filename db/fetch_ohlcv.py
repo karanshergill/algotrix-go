@@ -1,10 +1,10 @@
-"""Fetch OHLCV data from QuestDB, optimized with Pandas."""
+"""Fetch OHLCV data from QuestDB, optimized with Polars."""
 
 import logging
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
 from db.conns.py_conn import get_questdb_engine
 from utils import chunked, isin_where_clause
@@ -20,7 +20,10 @@ def fetch_ohlcv(
     end_date: str,
     chunk_size: int = 50,
 ) -> Dict[Tuple[str, str], Tuple[np.ndarray, ...]]:
-    """Fetch OHLCV data grouped by (isin, trade_date) using Pandas.
+    """Fetch OHLCV data grouped by (isin, trade_date) using Polars.
+
+    Uses psycopg2 cursor to fetch rows (QuestDB doesn't support ConnectorX's
+    BINARY protocol), then processes with Polars for fast grouping.
 
     Args:
         cfg: Baseline config dict (needs cfg["sources"][source_key]).
@@ -55,24 +58,38 @@ def fetch_ohlcv(
         )
 
         try:
-            df = pd.read_sql_query(sql, con=engine)
+            conn = engine.raw_connection()
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            rows = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            cursor.close()
+            conn.close()
         except Exception as e:
             logger.warning("Database query failed for chunk: %s", e)
             continue
 
-        if df.empty:
+        if not rows:
             continue
 
-        # Vectorized null removal
-        df = df.dropna(subset=["high", "low", "close", "volume"])
+        # Build Polars DataFrame from rows
+        df = pl.DataFrame(
+            {col: [row[i] for row in rows] for i, col in enumerate(columns)}
+        )
 
-        # Fast grouping via Pandas
-        for (isin, td), group in df.groupby(["isin", "trade_date"]):
+        # Drop nulls
+        df = df.drop_nulls(subset=["high", "low", "close", "volume"])
+
+        if df.is_empty():
+            continue
+
+        # Group by (isin, trade_date) and extract numpy arrays
+        for (isin, td), group in df.group_by(["isin", "trade_date"]):
             results[(isin, td)] = (
-                group["high"].to_numpy(dtype=np.float64),
-                group["low"].to_numpy(dtype=np.float64),
-                group["close"].to_numpy(dtype=np.float64),
-                group["volume"].to_numpy(dtype=np.int64),
+                group["high"].to_numpy().astype(np.float64),
+                group["low"].to_numpy().astype(np.float64),
+                group["close"].to_numpy().astype(np.float64),
+                group["volume"].to_numpy().astype(np.int64),
             )
 
     return results

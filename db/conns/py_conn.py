@@ -48,6 +48,24 @@ def get_postgres_engine():
     return _engines["postgres"]
 
 
+def get_questdb_conn_string():
+    """Get a PostgreSQL connection string for QuestDB (used by ConnectorX/Polars)."""
+    cfg = _load_db_config()["questdb"]
+    return (
+        f"postgresql://{cfg['user']}:{cfg['password']}"
+        f"@{cfg['host']}:{cfg['port']}/{cfg['database']}"
+    )
+
+
+def get_postgres_conn_string():
+    """Get a PostgreSQL connection string for Postgres (used by ConnectorX/Polars)."""
+    cfg = _load_db_config()["postgres"]
+    return (
+        f"postgresql://{cfg['user']}:{cfg['password']}"
+        f"@{cfg['host']}:{cfg['port']}/{cfg['database']}"
+    )
+
+
 def dispose_all():
     """Dispose all cached engines. Call on shutdown."""
     for name, engine in _engines.items():

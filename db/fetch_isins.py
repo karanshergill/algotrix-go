@@ -3,7 +3,7 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-import pandas as pd
+import polars as pl
 
 from db.conns.py_conn import get_questdb_engine
 
@@ -29,8 +29,6 @@ def fetch_isins(
     Returns:
         List of ISIN strings.
     """
-    engine = get_questdb_engine()
-
     where_parts = [
         f"timestamp >= '{start_date}'",
         f"timestamp <= '{end_date}T23:59:59.999999Z'",
@@ -42,13 +40,19 @@ def fetch_isins(
     where_clause = " AND ".join(where_parts)
     sql = f"SELECT DISTINCT isin FROM {source_table} WHERE {where_clause}"
 
+    engine = get_questdb_engine()
     try:
-        df = pd.read_sql_query(sql, con=engine)
+        conn = engine.raw_connection()
+        cursor = conn.cursor()
+        cursor.execute(sql)
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
     except Exception as e:
         logger.error("Failed to fetch ISINs from %s: %s", source_table, e)
         return []
 
-    if df.empty:
+    if not rows:
         return []
 
-    return df["isin"].tolist()
+    return [r[0] for r in rows]
