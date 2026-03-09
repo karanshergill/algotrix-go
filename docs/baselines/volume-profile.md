@@ -183,6 +183,13 @@ baselines:
 | `outlier_mad_k` | float | 10 | MAD multiplier for outlier bar filtering |
 | `lookback_days` | int | 30 | Number of days of history to compute |
 
+## Data Access
+
+- **Read:** `db/fetch_ohlcv.py` — psycopg2 cursor → Polars DataFrame → numpy arrays, via QuestDB Postgres wire (port 8812)
+- **Write:** `db/write_baseline.py` — raw SQL INSERT via psycopg2, timestamps converted ns → µs
+- **ISINs:** `db/fetch_isins.py` — distinct ISIN query via psycopg2
+- **Connections:** `db/conns/py_conn.py` — SQLAlchemy engine factory reading `db/conns/db.yaml`
+
 ## Input
 
 - **Source table:** `nse_cm_ohlcv_5s`

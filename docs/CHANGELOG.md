@@ -133,3 +133,21 @@ Proper SQL connections instead of HTTP API and raw TCP ILP. Single connection co
 
 **Why:**
 Three identical functions differing only by hardcoded table name → one function with dynamic table. No hardcoded table names in db layer.
+
+### Polars migration — replacing pandas
+
+**What changed:**
+- `db/fetch_ohlcv.py` — Polars DataFrame for groupby and numpy conversion (was pandas)
+- `db/fetch_isins.py` — psycopg2 cursor with list extraction (ConnectorX incompatible with QuestDB)
+- `db/write_baseline.py` — raw SQL INSERT with ns→µs timestamp conversion (pd.to_sql incompatible with QuestDB)
+- `db/conns/py_conn.py` — added `get_questdb_conn_string()` and `get_postgres_conn_string()` for future ConnectorX use
+- Installed: polars 1.38.1, connectorx 0.4.5, pyarrow 23.0.1
+
+**Why:**
+Polars is 1.3-1.8x faster than pandas for groupby/numpy conversion. Lower memory footprint. Better API.
+
+**Limitations discovered:**
+- ConnectorX doesn't work with QuestDB (QuestDB doesn't support `BINARY` protocol option)
+- `pd.to_sql` doesn't work with QuestDB (pg_catalog `ANY(ARRAY)` queries unsupported)
+- QuestDB Postgres wire expects microsecond timestamps, not nanoseconds
+- Reads use psycopg2 cursor → Polars DataFrame (workaround for ConnectorX)
