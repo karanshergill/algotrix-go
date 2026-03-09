@@ -36,3 +36,6 @@ fyers.yaml
 
 # token file
 token.json__pycache__/
+__pycache__/
+*.pyc
+token.json
