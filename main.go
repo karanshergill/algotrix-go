@@ -3,8 +3,11 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"runtime"
 	"strconv"
@@ -109,6 +112,46 @@ func main() {
 	_ = qdbSender
 }
 
+// hasFlag checks if a flag is present in os.Args.
+func hasFlag(name string) bool {
+	for _, arg := range os.Args {
+		if arg == name {
+			return true
+		}
+	}
+	return false
+}
+
+// queryExistingISINs queries QuestDB HTTP API for distinct ISINs already in a table.
+func queryExistingISINs(tableName string) (map[string]bool, error) {
+	url := fmt.Sprintf("http://localhost:9000/exec?query=SELECT+DISTINCT+isin+FROM+%s", tableName)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("query QuestDB: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Dataset [][]string `json:"dataset"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parse QuestDB response: %w", err)
+	}
+
+	existing := make(map[string]bool, len(result.Dataset))
+	for _, row := range result.Dataset {
+		if len(row) > 0 {
+			existing[row[0]] = true
+		}
+	}
+	return existing, nil
+}
+
 // runScrips fetches scrip master data from NSE and upserts into nse_cm_scrips.
 // Usage: go run . scrips --symbol SBIN   (single stock test)
 //        go run . scrips                  (all symbols from nse_cm_symbols)
@@ -204,6 +247,8 @@ func runOHLCV() {
 	// Parse flags.
 	var singleSymbol string
 	days := 366 // default: max 1 year for daily resolution
+	missingOnly := hasFlag("--missing-only")
+	failedRetry := hasFlag("--failed-retry")
 	for i, arg := range os.Args {
 		if arg == "--symbol" && i+1 < len(os.Args) {
 			singleSymbol = os.Args[i+1]
@@ -295,9 +340,28 @@ func runOHLCV() {
 		}
 	}
 
+	// Filter to missing-only if requested.
+	if missingOnly {
+		totalPairs := len(pairs)
+		existing, err := queryExistingISINs("nse_cm_ohlcv_1d")
+		if err != nil {
+			log.Printf("WARN: could not query existing ISINs: %v (proceeding with all)", err)
+		} else {
+			var filtered []symPair
+			for _, p := range pairs {
+				if !existing[p.isin] {
+					filtered = append(filtered, p)
+				}
+			}
+			pairs = filtered
+			fmt.Printf("Filtering to missing-only: %d of %d stocks need backfill\n", len(pairs), totalPairs)
+		}
+	}
+
 	fmt.Printf("Fetching daily OHLCV for %d symbols (%d days)...\n", len(pairs), days)
 
 	success, failed := 0, 0
+	var failedPairs []symPair
 	for i, p := range pairs {
 		if i > 0 {
 			time.Sleep(350 * time.Millisecond) // Fyers rate limit: 10/sec, 200/min
@@ -306,12 +370,14 @@ func runOHLCV() {
 		if err != nil {
 			fmt.Printf("[%d/%d] FAIL %s: %v\n", i+1, len(pairs), p.fySymbol, err)
 			failed++
+			failedPairs = append(failedPairs, p)
 			continue
 		}
 
 		if err := operations.WriteOHLCV(ctx, qdbSender, candles); err != nil {
 			fmt.Printf("[%d/%d] FAIL %s: write: %v\n", i+1, len(pairs), p.fySymbol, err)
 			failed++
+			failedPairs = append(failedPairs, p)
 			continue
 		}
 
@@ -319,7 +385,29 @@ func runOHLCV() {
 		fmt.Printf("[%d/%d] OK %s — %d candles\n", i+1, len(pairs), p.fySymbol, len(candles))
 	}
 
-	fmt.Printf("\nDone. Success: %d, Failed: %d\n", success, failed)
+	// Retry failed symbols if --failed-retry is set.
+	if failedRetry && len(failedPairs) > 0 {
+		fmt.Printf("\nRetrying %d failed symbols...\n", len(failedPairs))
+		for i, p := range failedPairs {
+			if i > 0 {
+				time.Sleep(350 * time.Millisecond)
+			}
+			candles, err := history.FetchDailyOHLCV(authToken, p.fySymbol, p.isin, dateFrom, dateTo)
+			if err != nil {
+				fmt.Printf("[retry %d/%d] FAIL %s: %v\n", i+1, len(failedPairs), p.fySymbol, err)
+				continue
+			}
+			if err := operations.WriteOHLCV(ctx, qdbSender, candles); err != nil {
+				fmt.Printf("[retry %d/%d] FAIL %s: write: %v\n", i+1, len(failedPairs), p.fySymbol, err)
+				continue
+			}
+			fmt.Printf("[retry %d/%d] OK %s — %d candles\n", i+1, len(failedPairs), p.fySymbol, len(candles))
+			success++
+			failed--
+		}
+	}
+
+	fmt.Printf("\nDone. Success: %d, Failed after retry: %d\n", success, failed)
 }
 
 // runOHLCV5s fetches 5-second OHLCV from Fyers and writes to QuestDB.
@@ -333,6 +421,8 @@ func runOHLCV5s() {
 	// Parse flags.
 	var singleSymbol string
 	days := 1 // default: last 1 day for incremental refresh
+	missingOnly := hasFlag("--missing-only")
+	failedRetry := hasFlag("--failed-retry")
 	for i, arg := range os.Args {
 		if arg == "--symbol" && i+1 < len(os.Args) {
 			singleSymbol = os.Args[i+1]
@@ -422,6 +512,24 @@ func runOHLCV5s() {
 		}
 	}
 
+	// Filter to missing-only if requested.
+	if missingOnly {
+		totalPairs := len(pairs)
+		existing, err := queryExistingISINs("nse_cm_ohlcv_5s")
+		if err != nil {
+			log.Printf("WARN: could not query existing ISINs: %v (proceeding with all)", err)
+		} else {
+			var filtered []symPair
+			for _, p := range pairs {
+				if !existing[p.isin] {
+					filtered = append(filtered, p)
+				}
+			}
+			pairs = filtered
+			fmt.Printf("Filtering to missing-only: %d of %d stocks need backfill\n", len(pairs), totalPairs)
+		}
+	}
+
 	// Split date range into 5-day chunks to keep memory usage low.
 	const chunkDays = 5
 	var chunks [][2]time.Time
@@ -437,42 +545,55 @@ func runOHLCV5s() {
 
 	fmt.Printf("Fetching 5s OHLCV for %d symbols (%d days, %d chunks)...\n", len(pairs), days, len(chunks))
 
-	success, failed := 0, 0
-	for i, p := range pairs {
+	// fetch5sSymbol processes a single symbol across all chunks.
+	fetch5sSymbol := func(idx int, p symPair, total int) bool {
 		totalCandles := 0
-		symbolFailed := false
-
 		for _, chunk := range chunks {
-			if i > 0 || chunk != chunks[0] {
+			if idx > 0 || chunk != chunks[0] {
 				time.Sleep(350 * time.Millisecond) // Fyers rate limit: 10/sec, 200/min
 			}
 			candles, err := history.Fetch5sOHLCV(authToken, p.fySymbol, p.isin, chunk[0], chunk[1])
 			if err != nil {
-				fmt.Printf("[%d/%d] FAIL %s: %v\n", i+1, len(pairs), p.fySymbol, err)
-				symbolFailed = true
-				break
+				fmt.Printf("[%d/%d] FAIL %s: %v\n", idx+1, total, p.fySymbol, err)
+				return false
 			}
-
 			if len(candles) > 0 {
 				if err := operations.Write5sOHLCV(ctx, qdbSender, candles); err != nil {
-					fmt.Printf("[%d/%d] FAIL %s: write: %v\n", i+1, len(pairs), p.fySymbol, err)
-					symbolFailed = true
-					break
+					fmt.Printf("[%d/%d] FAIL %s: write: %v\n", idx+1, total, p.fySymbol, err)
+					return false
 				}
 				totalCandles += len(candles)
 			}
 		}
+		fmt.Printf("[%d/%d] OK %s — %d candles\n", idx+1, total, p.fySymbol, totalCandles)
+		return true
+	}
 
-		if symbolFailed {
-			failed++
-		} else {
+	success, failed := 0, 0
+	var failedPairs []symPair
+	for i, p := range pairs {
+		if fetch5sSymbol(i, p, len(pairs)) {
 			success++
-			fmt.Printf("[%d/%d] OK %s — %d candles\n", i+1, len(pairs), p.fySymbol, totalCandles)
+		} else {
+			failed++
+			failedPairs = append(failedPairs, p)
 		}
 		runtime.GC() // free memory between symbols to prevent OOM
 	}
 
-	fmt.Printf("\nDone. Success: %d, Failed: %d\n", success, failed)
+	// Retry failed symbols if --failed-retry is set.
+	if failedRetry && len(failedPairs) > 0 {
+		fmt.Printf("\nRetrying %d failed symbols...\n", len(failedPairs))
+		for i, p := range failedPairs {
+			if fetch5sSymbol(i, p, len(failedPairs)) {
+				success++
+				failed--
+			}
+			runtime.GC()
+		}
+	}
+
+	fmt.Printf("\nDone. Success: %d, Failed after retry: %d\n", success, failed)
 }
 
 // runOHLCV1m fetches 1-minute OHLCV from Fyers and writes to QuestDB.
@@ -486,6 +607,8 @@ func runOHLCV1m() {
 	// Parse flags.
 	var singleSymbol string
 	days := 1 // default: last 1 day for incremental refresh
+	missingOnly := hasFlag("--missing-only")
+	failedRetry := hasFlag("--failed-retry")
 	for i, arg := range os.Args {
 		if arg == "--symbol" && i+1 < len(os.Args) {
 			singleSymbol = os.Args[i+1]
@@ -575,9 +698,28 @@ func runOHLCV1m() {
 		}
 	}
 
+	// Filter to missing-only if requested.
+	if missingOnly {
+		totalPairs := len(pairs)
+		existing, err := queryExistingISINs("nse_cm_ohlcv_1m")
+		if err != nil {
+			log.Printf("WARN: could not query existing ISINs: %v (proceeding with all)", err)
+		} else {
+			var filtered []symPair
+			for _, p := range pairs {
+				if !existing[p.isin] {
+					filtered = append(filtered, p)
+				}
+			}
+			pairs = filtered
+			fmt.Printf("Filtering to missing-only: %d of %d stocks need backfill\n", len(pairs), totalPairs)
+		}
+	}
+
 	fmt.Printf("Fetching 1m OHLCV for %d symbols (%d days)...\n", len(pairs), days)
 
 	success, failed := 0, 0
+	var failedPairs []symPair
 	for i, p := range pairs {
 		if i > 0 {
 			time.Sleep(350 * time.Millisecond) // Fyers rate limit: 10/sec, 200/min
@@ -586,12 +728,14 @@ func runOHLCV1m() {
 		if err != nil {
 			fmt.Printf("[%d/%d] FAIL %s: %v\n", i+1, len(pairs), p.fySymbol, err)
 			failed++
+			failedPairs = append(failedPairs, p)
 			continue
 		}
 
 		if err := operations.Write1mOHLCV(ctx, qdbSender, candles); err != nil {
 			fmt.Printf("[%d/%d] FAIL %s: write: %v\n", i+1, len(pairs), p.fySymbol, err)
 			failed++
+			failedPairs = append(failedPairs, p)
 			continue
 		}
 
@@ -599,5 +743,27 @@ func runOHLCV1m() {
 		fmt.Printf("[%d/%d] OK %s — %d candles\n", i+1, len(pairs), p.fySymbol, len(candles))
 	}
 
-	fmt.Printf("\nDone. Success: %d, Failed: %d\n", success, failed)
+	// Retry failed symbols if --failed-retry is set.
+	if failedRetry && len(failedPairs) > 0 {
+		fmt.Printf("\nRetrying %d failed symbols...\n", len(failedPairs))
+		for i, p := range failedPairs {
+			if i > 0 {
+				time.Sleep(350 * time.Millisecond)
+			}
+			candles, err := history.Fetch1mOHLCV(authToken, p.fySymbol, p.isin, dateFrom, dateTo)
+			if err != nil {
+				fmt.Printf("[retry %d/%d] FAIL %s: %v\n", i+1, len(failedPairs), p.fySymbol, err)
+				continue
+			}
+			if err := operations.Write1mOHLCV(ctx, qdbSender, candles); err != nil {
+				fmt.Printf("[retry %d/%d] FAIL %s: write: %v\n", i+1, len(failedPairs), p.fySymbol, err)
+				continue
+			}
+			fmt.Printf("[retry %d/%d] OK %s — %d candles\n", i+1, len(failedPairs), p.fySymbol, len(candles))
+			success++
+			failed--
+		}
+	}
+
+	fmt.Printf("\nDone. Success: %d, Failed after retry: %d\n", success, failed)
 }

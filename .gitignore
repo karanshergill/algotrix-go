@@ -35,4 +35,4 @@ go.work.sum
 fyers.yaml
 
 # token file
-token.json
+token.json__pycache__/
