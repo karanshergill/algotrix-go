@@ -378,7 +378,7 @@ func runOHLCV() {
 			continue
 		}
 
-		if err := ops.WriteOHLCV(ctx, qdbSender, candles); err != nil {
+		if err := ops.WriteOHLCV(ctx, qdbSender, "nse_cm_ohlcv_1d", candles); err != nil {
 			fmt.Printf("[%d/%d] FAIL %s: write: %v\n", i+1, len(pairs), p.fySymbol, err)
 			failed++
 			failedPairs = append(failedPairs, p)
@@ -401,7 +401,7 @@ func runOHLCV() {
 				fmt.Printf("[retry %d/%d] FAIL %s: %v\n", i+1, len(failedPairs), p.fySymbol, err)
 				continue
 			}
-			if err := ops.WriteOHLCV(ctx, qdbSender, candles); err != nil {
+			if err := ops.WriteOHLCV(ctx, qdbSender, "nse_cm_ohlcv_1d", candles); err != nil {
 				fmt.Printf("[retry %d/%d] FAIL %s: write: %v\n", i+1, len(failedPairs), p.fySymbol, err)
 				continue
 			}
@@ -562,7 +562,7 @@ func runOHLCV5s() {
 				return false
 			}
 			if len(candles) > 0 {
-				if err := ops.Write5sOHLCV(ctx, qdbSender, candles); err != nil {
+				if err := ops.WriteOHLCV(ctx, qdbSender, "nse_cm_ohlcv_5s", candles); err != nil {
 					fmt.Printf("[%d/%d] FAIL %s: write: %v\n", idx+1, total, p.fySymbol, err)
 					return false
 				}
@@ -736,7 +736,7 @@ func runOHLCV1m() {
 			continue
 		}
 
-		if err := ops.Write1mOHLCV(ctx, qdbSender, candles); err != nil {
+		if err := ops.WriteOHLCV(ctx, qdbSender, "nse_cm_ohlcv_1m", candles); err != nil {
 			fmt.Printf("[%d/%d] FAIL %s: write: %v\n", i+1, len(pairs), p.fySymbol, err)
 			failed++
 			failedPairs = append(failedPairs, p)
@@ -759,7 +759,7 @@ func runOHLCV1m() {
 				fmt.Printf("[retry %d/%d] FAIL %s: %v\n", i+1, len(failedPairs), p.fySymbol, err)
 				continue
 			}
-			if err := ops.Write1mOHLCV(ctx, qdbSender, candles); err != nil {
+			if err := ops.WriteOHLCV(ctx, qdbSender, "nse_cm_ohlcv_1m", candles); err != nil {
 				fmt.Printf("[retry %d/%d] FAIL %s: write: %v\n", i+1, len(failedPairs), p.fySymbol, err)
 				continue
 			}

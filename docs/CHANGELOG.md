@@ -111,3 +111,25 @@ baselines/
     hvn_lvn.py
     output.py
 ```
+
+### Python DB layer — SQL connections replacing HTTP/ILP
+
+**What changed:**
+- Created `db/conns/py_conn.py` — SQLAlchemy engine factory for QuestDB (port 8812) and PostgreSQL (port 5432), reads from `db/conns/db.yaml`
+- Rewrote `db/fetch_ohlcv.py` — pandas + SQLAlchemy via QuestDB Postgres wire protocol (was urllib HTTP API)
+- Created `db/fetch_isins.py` — ISIN fetcher via SQL (replaces `utils/query.py` `get_isins` for new plugins)
+- Created `db/write_baseline.py` — SQL-based writer via `pd.to_sql` (replaces ILP TCP writer)
+- Updated `baselines/volume_profile/plugin.py` — uses new DB layer, zero HTTP/ILP dependencies
+
+**Why:**
+Proper SQL connections instead of HTTP API and raw TCP ILP. Single connection config source (`db/conns/db.yaml`). Pandas for efficient data handling.
+
+### Go OHLCV writers — consolidated and dynamic
+
+**What changed:**
+- Deleted `db/ops/write_ohlcv_5s.go`, `write_ohlcv_1m.go`, `write_ohlcv_1d.go`
+- Created single `db/ops/write_ohlcv.go` — `WriteOHLCV(ctx, sender, table, candles)` takes table name as parameter
+- Updated `main.go` — all call sites pass table name explicitly
+
+**Why:**
+Three identical functions differing only by hardcoded table name → one function with dynamic table. No hardcoded table names in db layer.

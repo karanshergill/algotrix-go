@@ -9,7 +9,7 @@ def build_output(isin, trade_date, bucket_volumes, bucket_prices, total_volume,
     """Build a result dict matching the output schema.
 
     Returns:
-        dict ready for questdb_write_ilp.
+        dict ready for write_baseline.
     """
     price_buckets = []
     for i in range(len(bucket_volumes)):

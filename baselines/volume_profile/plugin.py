@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from baselines.baseline_plugin import BaselinePlugin, questdb_write_ilp
+from baselines.baseline_plugin import BaselinePlugin
 from baselines.shared.filters import filter_outliers_mad
 from baselines.volume_profile.allocate import allocate_volume
 from baselines.volume_profile.buckets import build_buckets
@@ -10,8 +10,10 @@ from baselines.volume_profile.hvn_lvn import detect_hvn_lvn
 from baselines.volume_profile.output import build_output
 from baselines.volume_profile.poc import find_poc
 from baselines.volume_profile.value_area import compute_value_area
+from db.fetch_isins import fetch_isins
 from db.fetch_ohlcv import fetch_ohlcv
-from utils import to_utc_ns, get_isins
+from db.write_baseline import write_baseline
+from utils import to_utc_ns
 
 
 class VolumeProfilePlugin(BaselinePlugin):
@@ -47,13 +49,18 @@ class VolumeProfilePlugin(BaselinePlugin):
         start_date = end_date - timedelta(days=lookback_days + 10)
 
         source_table = self.cfg["sources"][source_key]
-        all_isins = get_isins(self.cfg, source_table,
-                              start_date.isoformat(), end_date.isoformat())
+        all_isins = fetch_isins(
+            self.cfg, source_table,
+            start_date.isoformat(), end_date.isoformat(),
+            symbols_filter=self.cfg.get("_symbols_filter"),
+        )
         if not all_isins:
             return []
 
-        grouped = fetch_ohlcv(self.cfg, source_key, all_isins,
-                              start_date.isoformat(), end_date.isoformat())
+        grouped = fetch_ohlcv(
+            self.cfg, source_key, all_isins,
+            start_date.isoformat(), end_date.isoformat(),
+        )
 
         results = []
         for (isin, trade_date), (highs, lows, closes, volumes) in grouped.items():
@@ -95,9 +102,9 @@ class VolumeProfilePlugin(BaselinePlugin):
     def store(self, results):
         if not results:
             return 0
-        table = self.plugin_cfg["table"]
-        return questdb_write_ilp(
-            self.cfg, table, results,
-            symbols=["isin"],
-            timestamps=["timestamp"],
+        return write_baseline(
+            table=self.plugin_cfg["table"],
+            results=results,
+            symbol_columns=["isin"],
+            timestamp_column="timestamp",
         )
