@@ -4,7 +4,7 @@ import math
 
 import numpy as np
 
-from db.read.tick import get_tick_size
+from db.tick_size import get_tick_size
 
 
 def allocate_volume(highs, lows, closes, volumes, price_min, bucket_size, n_buckets, cfg):

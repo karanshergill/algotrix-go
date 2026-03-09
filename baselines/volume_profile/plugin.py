@@ -10,7 +10,7 @@ from baselines.volume_profile.hvn_lvn import detect_hvn_lvn
 from baselines.volume_profile.output import build_output
 from baselines.volume_profile.poc import find_poc
 from baselines.volume_profile.value_area import compute_value_area
-from db.read.fetch_ohlcv import fetch_ohlcv
+from db.fetch_ohlcv import fetch_ohlcv
 from utils import to_utc_ns, get_isins
 
 
