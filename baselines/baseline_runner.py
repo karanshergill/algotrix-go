@@ -40,7 +40,8 @@ def discover_plugins(cfg):
 
     for plugin_name in cfg.get("baselines", {}):
         module_path = os.path.join(baselines_dir, f"{plugin_name}.py")
-        if not os.path.exists(module_path):
+        package_path = os.path.join(baselines_dir, plugin_name, "__init__.py")
+        if not os.path.exists(module_path) and not os.path.exists(package_path):
             print(f"  WARNING: No module found for plugin '{plugin_name}' (expected {module_path})")
             continue
         mod = importlib.import_module(f"baselines.{plugin_name}")

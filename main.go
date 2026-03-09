@@ -16,8 +16,9 @@ import (
 
 	"github.com/karanshergill/algotrix-go/data/history"
 	"github.com/karanshergill/algotrix-go/data/nse"
-	"github.com/karanshergill/algotrix-go/database/connections"
-	"github.com/karanshergill/algotrix-go/database/operations"
+	"github.com/karanshergill/algotrix-go/db/conns"
+	"github.com/karanshergill/algotrix-go/db/ops"
+	"github.com/karanshergill/algotrix-go/feed"
 	"github.com/karanshergill/algotrix-go/internal/auth"
 	"github.com/karanshergill/algotrix-go/internal/config"
 	"github.com/karanshergill/algotrix-go/models"
@@ -44,6 +45,9 @@ func main() {
 			return
 		case "ohlcv1m":
 			runOHLCV1m()
+			return
+		case "feed":
+			runFeed()
 			return
 		}
 	}
@@ -80,24 +84,24 @@ func main() {
 
 	ctx := context.Background()
 
-	dbCfg, err := connections.LoadDBConfig("database/connections/db.yaml")
+	dbCfg, err := conns.LoadDBConfig("db/conns/db.yaml")
 	if err != nil {
 		log.Fatal("Failed to load db config: ", err)
 	}
 
-	pgPool, err := connections.NewPostgresPool(ctx, &dbCfg.Postgres)
+	pgPool, err := conns.NewPostgresPool(ctx, &dbCfg.Postgres)
 	if err != nil {
 		log.Fatal("Postgres connection failed: ", err)
 	}
 	defer pgPool.Close()
 
-	qdbPool, err := connections.NewQuestDBPool(ctx, &dbCfg.QuestDB)
+	qdbPool, err := conns.NewQuestDBPool(ctx, &dbCfg.QuestDB)
 	if err != nil {
 		log.Fatal("QuestDB connection failed: ", err)
 	}
 	defer qdbPool.Close()
 
-	qdbSender, err := connections.NewQuestDBSender(ctx, &dbCfg.QuestDB)
+	qdbSender, err := conns.NewQuestDBSender(ctx, &dbCfg.QuestDB)
 	if err != nil {
 		log.Fatal("QuestDB ILP connection failed: ", err)
 	}
@@ -167,12 +171,12 @@ func runScrips() {
 	}
 
 	// DB connection.
-	dbCfg, err := connections.LoadDBConfig("database/connections/db.yaml")
+	dbCfg, err := conns.LoadDBConfig("db/conns/db.yaml")
 	if err != nil {
 		log.Fatal("Failed to load db config: ", err)
 	}
 
-	pgPool, err := connections.NewPostgresPool(ctx, &dbCfg.Postgres)
+	pgPool, err := conns.NewPostgresPool(ctx, &dbCfg.Postgres)
 	if err != nil {
 		log.Fatal("Postgres connection failed: ", err)
 	}
@@ -189,7 +193,7 @@ func runScrips() {
 	if singleSymbol != "" {
 		symbolList = []string{singleSymbol}
 	} else {
-		symbolList, err = operations.CategorizeAndFetchSymbols(ctx, pgPool)
+		symbolList, err = ops.CategorizeAndFetchSymbols(ctx, pgPool)
 		if err != nil {
 			log.Fatal("Failed to fetch symbols: ", err)
 		}
@@ -204,12 +208,12 @@ func runScrips() {
 		// Fetch equity details + trade info.
 		if err := nseClient.FetchEquityDetails(sym, scrip); err != nil {
 			if strings.Contains(err.Error(), "skipping ETF/MF") {
-				_ = operations.InsertSkip(ctx, pgPool, sym, "", "etf", err.Error())
+				_ = ops.InsertSkip(ctx, pgPool, sym, "", "etf", err.Error())
 				fmt.Printf("[%d/%d] SKIP %s: ETF/MF\n", i+1, len(symbolList), sym)
 				skipped++
 				continue
 			}
-			_ = operations.InsertSkip(ctx, pgPool, sym, "", "api_error", err.Error())
+			_ = ops.InsertSkip(ctx, pgPool, sym, "", "api_error", err.Error())
 			fmt.Printf("[%d/%d] FAIL %s: %v\n", i+1, len(symbolList), sym, err)
 			failed++
 			continue
@@ -221,7 +225,7 @@ func runScrips() {
 		}
 
 		// Upsert to DB.
-		if err := operations.UpsertScrip(ctx, pgPool, scrip); err != nil {
+		if err := ops.UpsertScrip(ctx, pgPool, scrip); err != nil {
 			fmt.Printf("[%d/%d] FAIL %s: db upsert: %v\n", i+1, len(symbolList), sym, err)
 			failed++
 			continue
@@ -279,18 +283,18 @@ func runOHLCV() {
 	}
 	authToken := a.AccessToken()
 
-	// DB connections.
-	dbCfg, err := connections.LoadDBConfig("database/connections/db.yaml")
+	// DB conns.
+	dbCfg, err := conns.LoadDBConfig("db/conns/db.yaml")
 	if err != nil {
 		log.Fatal(err)
 	}
-	pgPool, err := connections.NewPostgresPool(ctx, &dbCfg.Postgres)
+	pgPool, err := conns.NewPostgresPool(ctx, &dbCfg.Postgres)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer pgPool.Close()
 
-	qdbSender, err := connections.NewQuestDBSender(ctx, &dbCfg.QuestDB)
+	qdbSender, err := conns.NewQuestDBSender(ctx, &dbCfg.QuestDB)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -374,7 +378,7 @@ func runOHLCV() {
 			continue
 		}
 
-		if err := operations.WriteOHLCV(ctx, qdbSender, candles); err != nil {
+		if err := ops.WriteOHLCV(ctx, qdbSender, candles); err != nil {
 			fmt.Printf("[%d/%d] FAIL %s: write: %v\n", i+1, len(pairs), p.fySymbol, err)
 			failed++
 			failedPairs = append(failedPairs, p)
@@ -397,7 +401,7 @@ func runOHLCV() {
 				fmt.Printf("[retry %d/%d] FAIL %s: %v\n", i+1, len(failedPairs), p.fySymbol, err)
 				continue
 			}
-			if err := operations.WriteOHLCV(ctx, qdbSender, candles); err != nil {
+			if err := ops.WriteOHLCV(ctx, qdbSender, candles); err != nil {
 				fmt.Printf("[retry %d/%d] FAIL %s: write: %v\n", i+1, len(failedPairs), p.fySymbol, err)
 				continue
 			}
@@ -453,18 +457,18 @@ func runOHLCV5s() {
 	}
 	authToken := a.AccessToken()
 
-	// DB connections.
-	dbCfg, err := connections.LoadDBConfig("database/connections/db.yaml")
+	// DB conns.
+	dbCfg, err := conns.LoadDBConfig("db/conns/db.yaml")
 	if err != nil {
 		log.Fatal(err)
 	}
-	pgPool, err := connections.NewPostgresPool(ctx, &dbCfg.Postgres)
+	pgPool, err := conns.NewPostgresPool(ctx, &dbCfg.Postgres)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer pgPool.Close()
 
-	qdbSender, err := connections.NewQuestDBSender(ctx, &dbCfg.QuestDB)
+	qdbSender, err := conns.NewQuestDBSender(ctx, &dbCfg.QuestDB)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -558,7 +562,7 @@ func runOHLCV5s() {
 				return false
 			}
 			if len(candles) > 0 {
-				if err := operations.Write5sOHLCV(ctx, qdbSender, candles); err != nil {
+				if err := ops.Write5sOHLCV(ctx, qdbSender, candles); err != nil {
 					fmt.Printf("[%d/%d] FAIL %s: write: %v\n", idx+1, total, p.fySymbol, err)
 					return false
 				}
@@ -639,18 +643,18 @@ func runOHLCV1m() {
 	}
 	authToken := a.AccessToken()
 
-	// DB connections.
-	dbCfg, err := connections.LoadDBConfig("database/connections/db.yaml")
+	// DB conns.
+	dbCfg, err := conns.LoadDBConfig("db/conns/db.yaml")
 	if err != nil {
 		log.Fatal(err)
 	}
-	pgPool, err := connections.NewPostgresPool(ctx, &dbCfg.Postgres)
+	pgPool, err := conns.NewPostgresPool(ctx, &dbCfg.Postgres)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer pgPool.Close()
 
-	qdbSender, err := connections.NewQuestDBSender(ctx, &dbCfg.QuestDB)
+	qdbSender, err := conns.NewQuestDBSender(ctx, &dbCfg.QuestDB)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -732,7 +736,7 @@ func runOHLCV1m() {
 			continue
 		}
 
-		if err := operations.Write1mOHLCV(ctx, qdbSender, candles); err != nil {
+		if err := ops.Write1mOHLCV(ctx, qdbSender, candles); err != nil {
 			fmt.Printf("[%d/%d] FAIL %s: write: %v\n", i+1, len(pairs), p.fySymbol, err)
 			failed++
 			failedPairs = append(failedPairs, p)
@@ -755,7 +759,7 @@ func runOHLCV1m() {
 				fmt.Printf("[retry %d/%d] FAIL %s: %v\n", i+1, len(failedPairs), p.fySymbol, err)
 				continue
 			}
-			if err := operations.Write1mOHLCV(ctx, qdbSender, candles); err != nil {
+			if err := ops.Write1mOHLCV(ctx, qdbSender, candles); err != nil {
 				fmt.Printf("[retry %d/%d] FAIL %s: write: %v\n", i+1, len(failedPairs), p.fySymbol, err)
 				continue
 			}
@@ -766,4 +770,47 @@ func runOHLCV1m() {
 	}
 
 	fmt.Printf("\nDone. Success: %d, Failed after retry: %d\n", success, failed)
+}
+
+// runFeed starts the live market data feed system.
+// Usage: go run . feed --symbols NSE:RELIANCE-EQ,NSE:HDFCBANK-EQ --config feed/config.yaml
+func runFeed() {
+	var symbolsFlag, configPath string
+	configPath = "feed/config.yaml" // default
+
+	for i, arg := range os.Args {
+		if arg == "--symbols" && i+1 < len(os.Args) {
+			symbolsFlag = os.Args[i+1]
+		}
+		if arg == "--config" && i+1 < len(os.Args) {
+			configPath = os.Args[i+1]
+		}
+	}
+
+	if symbolsFlag == "" {
+		log.Fatal("--symbols is required. Example: --symbols NSE:RELIANCE-EQ,NSE:HDFCBANK-EQ")
+	}
+
+	symbolList := strings.Split(symbolsFlag, ",")
+	for i := range symbolList {
+		symbolList[i] = strings.TrimSpace(symbolList[i])
+	}
+
+	// Auth.
+	cfg, err := config.Load("internal/config/fyers.yaml")
+	if err != nil {
+		log.Fatal(err)
+	}
+	a := auth.New(cfg.Fyers)
+	if err := a.LoadToken(); err != nil {
+		log.Fatal("No valid Fyers token. Run auth first.")
+	}
+	if err := a.Validate(); err != nil {
+		log.Fatal("Fyers token invalid: ", err)
+	}
+
+	recorder := feed.NewRecorder(configPath, symbolList)
+	if err := recorder.Start(a.AccessToken()); err != nil {
+		log.Fatal("Feed error: ", err)
+	}
 }

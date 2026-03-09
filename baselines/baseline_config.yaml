@@ -41,6 +41,21 @@ nse_holidays:
   - "2026-03-20"
   - "2026-03-30"
 
+# Tick size bands (NSE, effective April 15, 2025)
+tick_bands:
+  - max_price: 250
+    tick_size: 0.01
+  - max_price: 1000
+    tick_size: 0.05
+  - max_price: 5000
+    tick_size: 0.10
+  - max_price: 10000
+    tick_size: 0.50
+  - max_price: 20000
+    tick_size: 1.00
+  - max_price: null
+    tick_size: 5.00
+
 # Baseline plugins — each has enabled flag + params
 baselines:
   volume_profile:
@@ -49,8 +64,9 @@ baselines:
     source: ohlcv_5s
     bucket_size: 1.0
     value_area_pct: 70
-    hvn_threshold: 1.5
-    lvn_threshold: 0.5
+    hvn_percentile: 75
+    lvn_percentile: 25
+    outlier_mad_k: 10
     lookback_days: 30
 
   intraday_volume:

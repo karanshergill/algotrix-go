@@ -1,4 +1,4 @@
-package connections
+package conns
 
 import (
 	"context"

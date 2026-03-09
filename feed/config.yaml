@@ -1,0 +1,23 @@
+feed:
+  tbt:
+    enabled: true
+    diff_only: false
+    snapshot_interval_ms: 1000
+    flush_interval_ms: 100
+    max_depth_levels: 50
+    reconnect: true
+    max_reconnect_attempts: 50
+    log_path: ./logs
+  datasocket:
+    enabled: true
+    flush_interval_ms: 100
+    reconnect: true
+    max_reconnect_attempts: 50
+    log_path: ./logs
+  storage:
+    questdb_ilp_host: localhost
+    questdb_ilp_port: 9009
+    questdb_http_host: localhost
+    questdb_http_port: 9000
+    depth_table: nse_cm_depth
+    ticks_table: nse_cm_ticks
