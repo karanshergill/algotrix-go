@@ -1,5 +1,6 @@
 import {
   Construction,
+  Database,
   LayoutDashboard,
   Monitor,
   Bug,
@@ -56,6 +57,11 @@ export const sidebarData: SidebarData = {
           title: 'Dashboard',
           url: '/',
           icon: LayoutDashboard,
+        },
+        {
+          title: 'OHLCV Data',
+          url: '/ohlcv',
+          icon: Database,
         },
         {
           title: 'Tasks',

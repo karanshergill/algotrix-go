@@ -33,6 +33,9 @@ func main() {
 		case "feed":
 			runFeed()
 			return
+		case "ohlcv":
+			runOHLCV()
+			return
 		}
 	}
 
@@ -89,7 +92,8 @@ func main() {
 // runScrips fetches scrip master data from NSE and upserts into nse_cm_scrips.
 // It reads the universe from the unified symbols table.
 // Usage: go run . scrips --symbol SBIN   (single stock test)
-//        go run . scrips                  (all active symbols)
+//
+//	go run . scrips                  (all active symbols)
 func runScrips() {
 	ctx := context.Background()
 
