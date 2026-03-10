@@ -13,12 +13,10 @@ type DBConfig struct {
     User     string `yaml:"user"`
     Password string `yaml:"password"`
     Database string `yaml:"database"`
-    ILPPort  string `yaml:"ilp_port,omitempty"`
 }
 
 type DBsConfig struct {
 	Postgres DBConfig `yaml:"postgres"`
-    QuestDB  DBConfig `yaml:"questdb"`
 }
 
 func LoadDBConfig(path string) (*DBsConfig, error) {
