@@ -10,56 +10,37 @@ import (
 )
 
 const upsertScripSQL = `
-INSERT INTO nse_cm_scrips (
-    isin, company_name, face_value,
-    sector_macro, sector, industry, industry_basic,
-    listing_date, index_membership,
-    is_fno, is_sme, is_psu, promoter_pledged,
-    market_cap, free_float_market_cap, total_shares,
-    pe_symbol, pe_sector,
-    promoter_pct, public_pct, fii_pct, dii_pct,
-    mutual_fund_pct, insurance_pct, retail_pct,
-    shareholding_quarter
-) VALUES (
-    $1, $2, $3,
-    $4, $5, $6, $7,
-    $8, $9,
-    $10, $11, $12, $13,
-    $14, $15, $16,
-    $17, $18,
-    $19, $20, $21, $22,
-    $23, $24, $25,
-    $26
-)
-ON CONFLICT (isin) DO UPDATE SET
-    company_name          = EXCLUDED.company_name,
-    face_value            = EXCLUDED.face_value,
-    sector_macro          = EXCLUDED.sector_macro,
-    sector                = EXCLUDED.sector,
-    industry              = EXCLUDED.industry,
-    industry_basic        = EXCLUDED.industry_basic,
-    listing_date          = EXCLUDED.listing_date,
-    index_membership      = EXCLUDED.index_membership,
-    is_fno                = EXCLUDED.is_fno,
-    is_sme                = EXCLUDED.is_sme,
-    is_psu                = EXCLUDED.is_psu,
-    promoter_pledged      = EXCLUDED.promoter_pledged,
-    market_cap            = EXCLUDED.market_cap,
-    free_float_market_cap = EXCLUDED.free_float_market_cap,
-    total_shares          = EXCLUDED.total_shares,
-    pe_symbol             = EXCLUDED.pe_symbol,
-    pe_sector             = EXCLUDED.pe_sector,
-    promoter_pct          = EXCLUDED.promoter_pct,
-    public_pct            = EXCLUDED.public_pct,
-    fii_pct               = EXCLUDED.fii_pct,
-    dii_pct               = EXCLUDED.dii_pct,
-    mutual_fund_pct       = EXCLUDED.mutual_fund_pct,
-    insurance_pct         = EXCLUDED.insurance_pct,
-    retail_pct            = EXCLUDED.retail_pct,
-    shareholding_quarter  = EXCLUDED.shareholding_quarter
+UPDATE symbols SET
+    company_name          = $2,
+    face_value            = $3,
+    sector_macro          = $4,
+    sector                = $5,
+    industry              = $6,
+    industry_basic        = $7,
+    listing_date          = $8,
+    index_membership      = $9,
+    is_fno                = $10,
+    is_sme                = $11,
+    is_psu                = $12,
+    promoter_pledged      = $13,
+    market_cap            = $14,
+    free_float_market_cap = $15,
+    total_shares          = $16,
+    pe_symbol             = $17,
+    pe_sector             = $18,
+    promoter_pct          = $19,
+    public_pct            = $20,
+    fii_pct               = $21,
+    dii_pct               = $22,
+    mutual_fund_pct       = $23,
+    insurance_pct         = $24,
+    retail_pct            = $25,
+    shareholding_quarter  = $26,
+    updated_at            = now()
+WHERE isin = $1
 `
 
-// UpsertScrip inserts or updates a single scrip enrichment record.
+// UpsertScrip updates enrichment data for a symbol in the unified symbols table.
 func UpsertScrip(ctx context.Context, pool *pgxpool.Pool, s *models.Scrip) error {
 	_, err := pool.Exec(ctx, upsertScripSQL,
 		s.ISIN, s.CompanyName, s.FaceValue,
