@@ -19,6 +19,7 @@ interface OhlcvDayCellProps {
   selected: boolean
   totalSymbols: number
   coverage: DayOhlcvStatus
+  ohlcvLoading?: boolean
   onSelect: (date: string) => void
 }
 
@@ -31,6 +32,7 @@ export function OhlcvDayCell({
   selected,
   totalSymbols,
   coverage,
+  ohlcvLoading = false,
   onSelect,
 }: OhlcvDayCellProps) {
   const isWeekend = dayType === 'weekend'
@@ -60,7 +62,14 @@ export function OhlcvDayCell({
       </span>
 
       <div className='mt-2 flex w-full flex-col gap-1'>
-        {RESOLUTIONS.map((resolution) => {
+        {(dayType === 'trading' || dayType === 'muhurat') && ohlcvLoading && (
+          <>
+            {RESOLUTIONS.map((r) => (
+              <div key={r} className='h-3 animate-pulse rounded bg-muted/60' />
+            ))}
+          </>
+        )}
+        {(dayType === 'trading' || dayType === 'muhurat') && !ohlcvLoading && RESOLUTIONS.map((resolution) => {
           const value = coverage[resolution]
           return (
             <Tooltip key={resolution}>
@@ -70,13 +79,19 @@ export function OhlcvDayCell({
                     {resolution}
                   </span>
                   <span className='flex items-center gap-1 tabular-nums'>
-                    <span
-                      className={cn(
-                        'size-1.5 rounded-full',
-                        indicatorColor(value.status)
-                      )}
-                    />
-                    <span>{value.count}</span>
+                    {value.status === 'missing' ? (
+                      <span className='text-muted-foreground/40'>—</span>
+                    ) : (
+                      <>
+                        <span
+                          className={cn(
+                            'size-1.5 rounded-full',
+                            indicatorColor(value.status)
+                          )}
+                        />
+                        <span>{value.count}</span>
+                      </>
+                    )}
                   </span>
                 </span>
               </TooltipTrigger>

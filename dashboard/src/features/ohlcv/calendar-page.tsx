@@ -5,7 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
-  Loader2,
+
   PartyPopper,
   TrendingUp,
 } from 'lucide-react'
@@ -32,7 +32,7 @@ import {
 import { useOhlcvFetch } from './use-ohlcv-fetch'
 import { useOhlcvStatus } from './use-ohlcv-status'
 
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 const MONTH_NAMES = [
   'January',
   'February',
@@ -67,9 +67,9 @@ export function OhlcvCalendarPage() {
   const monthStart = formatDate(year, month, 1)
   const monthEnd = formatDate(year, month, new Date(year, month + 1, 0).getDate())
 
-  const { data: days, isLoading, error } = useCalendarData(year, month)
+  const { data: days, isLoading, isFetching, error } = useCalendarData(year, month)
   const { data: upcomingHolidays } = useUpcomingHolidays()
-  const { data: ohlcvStatus } = useOhlcvStatus(monthStart, monthEnd)
+  const { data: ohlcvStatus, isLoading: ohlcvLoading } = useOhlcvStatus(monthStart, monthEnd)
   const startFetch = useOhlcvFetch()
 
   const dayMap = useMemo(() => {
@@ -292,18 +292,14 @@ export function OhlcvCalendarPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {isLoading ? (
-                <div className='flex h-72 items-center justify-center'>
-                  <Loader2 className='size-6 animate-spin text-muted-foreground' />
-                </div>
-              ) : error ? (
+              {error ? (
                 <div className='flex h-72 flex-col items-center justify-center gap-2 text-muted-foreground'>
                   <AlertCircle className='size-6' />
                   <p className='text-sm'>Failed to load calendar data</p>
                 </div>
               ) : (
                 <>
-                  <div className='grid grid-cols-7 gap-2'>
+                  <div className='grid grid-cols-5 gap-2'>
                     {WEEKDAYS.map((weekday) => (
                       <div
                         key={weekday}
@@ -314,13 +310,24 @@ export function OhlcvCalendarPage() {
                     ))}
                   </div>
 
-                  <div className='grid grid-cols-7 gap-2'>
+                  <div className='grid grid-cols-5 gap-2'>
                     {cells.map((day, index) => {
                       if (day === null) {
                         return <div key={`empty-${index}`} className='h-24' />
                       }
 
                       const date = formatDate(year, month, day)
+
+                      // Show skeleton while calendar data is loading
+                      if (isLoading || isFetching) {
+                        return (
+                          <div
+                            key={date}
+                            className='h-24 animate-pulse rounded-lg border bg-muted/40'
+                          />
+                        )
+                      }
+
                       const calendarDay = dayMap.get(date)
                       const dayType = calendarDay
                         ? getDayType(calendarDay)
@@ -339,6 +346,7 @@ export function OhlcvCalendarPage() {
                           selected={selectedDate === date}
                           totalSymbols={ohlcvStatus?.totalSymbols ?? 0}
                           coverage={coverage}
+                          ohlcvLoading={ohlcvLoading}
                           onSelect={setSelectedDate}
                         />
                       )
@@ -499,27 +507,30 @@ function StatCard({
   )
 }
 
+// Returns only Mon-Fri cells (null for padding, number for day)
+// Weekends are completely excluded
 function getMonthGrid(year: number, month: number) {
-  const firstDay = new Date(year, month, 1)
-  let startDow = firstDay.getDay() - 1
-  if (startDow < 0) {
-    startDow = 6
-  }
-
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   const cells: (number | null)[] = []
 
-  for (let index = 0; index < startDow; index += 1) {
-    cells.push(null)
+  // Find the weekday (0=Mon..4=Fri) of the 1st
+  const firstDay = new Date(year, month, 1)
+  const firstDow = firstDay.getDay() // 0=Sun,1=Mon...6=Sat
+  // Add leading nulls for Mon-Fri offset
+  const leadingNulls = firstDow === 0 ? 4 : Math.min(firstDow - 1, 4)
+  for (let i = 0; i < leadingNulls; i++) cells.push(null)
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(year, month, day)
+    const dow = date.getDay()
+    if (dow !== 0 && dow !== 6) {
+      // Mon-Fri only
+      cells.push(day)
+    }
   }
 
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    cells.push(day)
-  }
-
-  while (cells.length % 7 !== 0) {
-    cells.push(null)
-  }
+  // Pad to complete last row of 5
+  while (cells.length % 5 !== 0) cells.push(null)
 
   return cells
 }
