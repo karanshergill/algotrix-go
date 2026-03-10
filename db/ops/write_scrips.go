@@ -59,13 +59,7 @@ ON CONFLICT (isin) DO UPDATE SET
     shareholding_quarter  = EXCLUDED.shareholding_quarter
 `
 
-const insertSkipSQL = `
-INSERT INTO nse_cm_symbols_skip (symbol, isin, reason, detail)
-VALUES ($1, $2, $3, $4)
-ON CONFLICT (symbol) DO NOTHING
-`
-
-// UpsertScrip inserts or updates a single scrip record.
+// UpsertScrip inserts or updates a single scrip enrichment record.
 func UpsertScrip(ctx context.Context, pool *pgxpool.Pool, s *models.Scrip) error {
 	_, err := pool.Exec(ctx, upsertScripSQL,
 		s.ISIN, s.CompanyName, s.FaceValue,
@@ -84,103 +78,139 @@ func UpsertScrip(ctx context.Context, pool *pgxpool.Pool, s *models.Scrip) error
 	return nil
 }
 
-// InsertSkip records a symbol to skip in future runs.
-func InsertSkip(ctx context.Context, pool *pgxpool.Pool, symbol, isin, reason, detail string) error {
-	_, err := pool.Exec(ctx, insertSkipSQL, symbol, isin, reason, detail)
-	return err
+// seriesSkipReason maps non-EQ series to skip reasons.
+var seriesSkipReason = map[string]string{
+	"BE": "trade_to_trade",
+	"SM": "sme",
+	"ST": "sme",
+	"BL": "non_equity",
+	"IL": "non_equity",
+	"SG": "non_equity",
+	"GS": "non_equity",
+	"GB": "non_equity",
+	"MF": "non_equity",
+	"TB": "non_equity",
+	"BZ": "non_equity",
+	"N0": "non_equity",
+	"N1": "non_equity",
+	"N2": "non_equity",
+	"N3": "non_equity",
+	"N4": "non_equity",
+	"N5": "non_equity",
+	"N6": "non_equity",
+	"AE": "non_equity",
+	"AF": "non_equity",
+	"T0": "non_equity",
 }
 
-// seriesReason maps Fyers symbol suffixes to skip reasons.
-var seriesReason = map[string]string{
-	"-BE": "trade_to_trade",
-	"-SM": "sme",
-	"-BL": "non_equity",
-	"-IL": "non_equity",
-	"-N0": "non_equity",
-	"-N1": "non_equity",
-	"-N2": "non_equity",
-	"-N3": "non_equity",
-	"-N4": "non_equity",
-	"-N5": "non_equity",
-	"-N6": "non_equity",
-	"-AE": "non_equity",
-	"-AF": "non_equity",
-	"-T0": "non_equity",
-}
-
-// cleanSymbol converts "NSE:SBIN-EQ" → "SBIN".
-func cleanSymbol(raw string) string {
-	sym := strings.TrimPrefix(raw, "NSE:")
-	// Strip the last -XX suffix.
+// CleanSymbol extracts the clean symbol name from Fyers format.
+// "NSE:RELIANCE-EQ" → "RELIANCE"
+func CleanSymbol(fySymbol string) string {
+	sym := strings.TrimPrefix(fySymbol, "NSE:")
 	if idx := strings.LastIndex(sym, "-"); idx > 0 {
 		sym = sym[:idx]
 	}
 	return sym
 }
 
-// CategorizeAndFetchSymbols loads all symbols from nse_cm_symbols,
-// auto-inserts non-EQ symbols into nse_cm_symbols_skip, and returns
-// only EQ symbols that are not in the skip table.
-func CategorizeAndFetchSymbols(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
-	// 1. Load ALL symbols.
-	rows, err := pool.Query(ctx, "SELECT symbol, isin FROM nse_cm_symbols ORDER BY symbol")
+// ExtractSeries extracts the series from Fyers format.
+// "NSE:RELIANCE-EQ" → "EQ"
+func ExtractSeries(fySymbol string) string {
+	if idx := strings.LastIndex(fySymbol, "-"); idx > 0 && idx < len(fySymbol)-1 {
+		return fySymbol[idx+1:]
+	}
+	return "UNKNOWN"
+}
+
+const upsertSymbolSQL = `
+INSERT INTO symbols (isin, symbol, name, fy_token, fy_symbol, series, status, skip_reason, skip_detail, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+ON CONFLICT (isin) DO UPDATE SET
+    symbol      = EXCLUDED.symbol,
+    name        = EXCLUDED.name,
+    fy_token    = EXCLUDED.fy_token,
+    fy_symbol   = EXCLUDED.fy_symbol,
+    series      = EXCLUDED.series,
+    status      = EXCLUDED.status,
+    skip_reason = EXCLUDED.skip_reason,
+    skip_detail = EXCLUDED.skip_detail,
+    updated_at  = now()
+`
+
+// UpsertSymbol inserts or updates a symbol in the unified symbols table.
+// Automatically determines status and skip_reason from the series.
+func UpsertSymbol(ctx context.Context, pool *pgxpool.Pool, isin, name string, fyToken int64, fySymbol string) error {
+	symbol := CleanSymbol(fySymbol)
+	series := ExtractSeries(fySymbol)
+
+	status := "active"
+	var skipReason *string
+	var skipDetail *string
+
+	if series != "EQ" {
+		status = "skipped"
+		reason := "non_equity"
+		if r, ok := seriesSkipReason[series]; ok {
+			reason = r
+		}
+		detail := "Series: " + series
+		skipReason = &reason
+		skipDetail = &detail
+	}
+
+	_, err := pool.Exec(ctx, upsertSymbolSQL,
+		isin, symbol, name, fyToken, fySymbol, series, status, skipReason, skipDetail,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("querying symbols: %w", err)
+		return fmt.Errorf("upsert symbol %s: %w", symbol, err)
+	}
+	return nil
+}
+
+// FetchActiveSymbols returns clean symbol names for all active (tradeable) symbols.
+func FetchActiveSymbols(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
+	rows, err := pool.Query(ctx, "SELECT symbol FROM symbols WHERE status = 'active' ORDER BY symbol")
+	if err != nil {
+		return nil, fmt.Errorf("fetch active symbols: %w", err)
 	}
 	defer rows.Close()
 
-	type rawSym struct {
-		symbol string
-		isin   string
-	}
-	var allSymbols []rawSym
-	for rows.Next() {
-		var s rawSym
-		if err := rows.Scan(&s.symbol, &s.isin); err != nil {
-			return nil, err
-		}
-		allSymbols = append(allSymbols, s)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	// 2. Categorize non-EQ symbols and insert into skip table.
-	for _, s := range allSymbols {
-		if strings.HasSuffix(s.symbol, "-EQ") {
-			continue
-		}
-		clean := cleanSymbol(s.symbol)
-		reason := "non_equity"
-		suffix := s.symbol[strings.LastIndex(s.symbol, "-"):]
-		if r, ok := seriesReason[suffix]; ok {
-			reason = r
-		}
-		_ = InsertSkip(ctx, pool, clean, s.isin, reason, "Series: "+suffix)
-	}
-
-	// 3. Return EQ symbols not in skip table.
-	eqRows, err := pool.Query(ctx, `
-		SELECT REPLACE(REPLACE(s.symbol, 'NSE:', ''), '-EQ', '')
-		FROM nse_cm_symbols s
-		LEFT JOIN nse_cm_symbols_skip sk
-			ON REPLACE(REPLACE(s.symbol, 'NSE:', ''), '-EQ', '') = sk.symbol
-		WHERE s.symbol LIKE '%-EQ'
-			AND sk.symbol IS NULL
-		ORDER BY s.symbol
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("querying eq symbols: %w", err)
-	}
-	defer eqRows.Close()
-
 	var symbols []string
-	for eqRows.Next() {
-		var sym string
-		if err := eqRows.Scan(&sym); err != nil {
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
 			return nil, err
 		}
-		symbols = append(symbols, sym)
+		symbols = append(symbols, s)
 	}
-	return symbols, eqRows.Err()
+	return symbols, rows.Err()
+}
+
+// FetchActiveISINs returns ISINs for all active (tradeable) symbols.
+func FetchActiveISINs(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
+	rows, err := pool.Query(ctx, "SELECT isin FROM symbols WHERE status = 'active' ORDER BY symbol")
+	if err != nil {
+		return nil, fmt.Errorf("fetch active ISINs: %w", err)
+	}
+	defer rows.Close()
+
+	var isins []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		isins = append(isins, s)
+	}
+	return isins, rows.Err()
+}
+
+// FetchISINForSymbol returns the ISIN for a given clean symbol name.
+func FetchISINForSymbol(ctx context.Context, pool *pgxpool.Pool, symbol string) (string, error) {
+	var isin string
+	err := pool.QueryRow(ctx, "SELECT isin FROM symbols WHERE symbol = $1 AND status = 'active'", symbol).Scan(&isin)
+	if err != nil {
+		return "", fmt.Errorf("fetch ISIN for %s: %w", symbol, err)
+	}
+	return isin, nil
 }

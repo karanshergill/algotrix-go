@@ -1,7 +1,7 @@
 package symbols
 
 const (
-    TableName = "nse_cm_symbols"
+    TableName = "symbols"
 
     ColFyToken = "fy_token"
     ColSymbol  = "symbol"
