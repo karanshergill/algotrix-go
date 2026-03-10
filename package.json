@@ -1,0 +1,32 @@
+{
+  "name": "algotrix-go",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/karanshergill/algotrix-go.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/karanshergill/algotrix-go/issues"
+  },
+  "homepage": "https://github.com/karanshergill/algotrix-go#readme",
+  "dependencies": {
+    "@hono/node-server": "^1.19.11",
+    "hono": "^4.12.7",
+    "pg": "^8.20.0",
+    "tsx": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.18.0"
+  }
+}

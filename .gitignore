@@ -39,3 +39,11 @@ token.json__pycache__/
 __pycache__/
 *.pyc
 token.json
+
+# Node
+node_modules/
+dashboard/node_modules/
+
+# Build output
+algotrix-go
+dashboard/dist/
