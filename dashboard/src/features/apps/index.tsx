@@ -1,3 +1,4 @@
+import { HeaderToolbar } from '@/components/layout/header-toolbar'
 import { type ChangeEvent, useState } from 'react'
 import { getRouteApi } from '@tanstack/react-router'
 import { SlidersHorizontal, ArrowUpAZ, ArrowDownAZ } from 'lucide-react'
@@ -14,9 +15,7 @@ import { Separator } from '@/components/ui/separator'
 import { ConfigDrawer } from '@/components/config-drawer'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
-import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Search } from '@/components/search'
-import { ThemeSwitch } from '@/components/theme-switch'
 import { apps } from './data/apps'
 
 const route = getRouteApi('/_authenticated/apps/')
@@ -87,9 +86,9 @@ export function Apps() {
       <Header>
         <Search />
         <div className='ms-auto flex items-center gap-4'>
-          <ThemeSwitch />
           <ConfigDrawer />
-          <ProfileDropdown />
+        
+          <HeaderToolbar />
         </div>
       </Header>
 

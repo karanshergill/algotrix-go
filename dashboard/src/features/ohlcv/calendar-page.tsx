@@ -12,8 +12,7 @@ import {
 import { toast } from 'sonner'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
-import { ProfileDropdown } from '@/components/profile-dropdown'
-import { ThemeSwitch } from '@/components/theme-switch'
+import { HeaderToolbar } from '@/components/layout/header-toolbar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -69,7 +68,7 @@ export function OhlcvCalendarPage() {
 
   const { data: days, isLoading, isFetching, error } = useCalendarData(year, month)
   const { data: upcomingHolidays } = useUpcomingHolidays()
-  const { data: ohlcvStatus, isLoading: ohlcvLoading } = useOhlcvStatus(monthStart, monthEnd)
+  const { data: ohlcvStatus, isLoading: ohlcvStatusLoading, isFetching: ohlcvFetching } = useOhlcvStatus(monthStart, monthEnd)
   const startFetch = useOhlcvFetch()
 
   const dayMap = useMemo(() => {
@@ -213,10 +212,7 @@ export function OhlcvCalendarPage() {
   return (
     <>
       <Header>
-        <div className='ms-auto flex items-center gap-4'>
-          <ThemeSwitch />
-          <ProfileDropdown />
-        </div>
+        <HeaderToolbar />
       </Header>
 
       <Main>
@@ -346,7 +342,7 @@ export function OhlcvCalendarPage() {
                           selected={selectedDate === date}
                           totalSymbols={ohlcvStatus?.totalSymbols ?? 0}
                           coverage={coverage}
-                          ohlcvLoading={ohlcvLoading}
+                          ohlcvLoading={(ohlcvStatusLoading || ohlcvFetching) && !ohlcvStatus?.days[date]}
                           onSelect={setSelectedDate}
                         />
                       )
