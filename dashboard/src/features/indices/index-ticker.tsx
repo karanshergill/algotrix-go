@@ -22,9 +22,10 @@ export function IndexTicker({ symbol, data, className }: IndexTickerProps) {
 
   if (!data) {
     return (
-      <span className={cn('flex items-baseline gap-1.5 text-sm tabular-nums', className)}>
-        <span className='font-semibold text-muted-foreground'>{name}</span>
-        <span className='text-muted-foreground/50'>—</span>
+      <span className={cn('inline-flex items-baseline gap-1.5 text-sm tabular-nums', className)}>
+        <span className='inline-block w-16 font-semibold text-muted-foreground'>{name}</span>
+        <span className='inline-block w-20 text-right text-muted-foreground/50'>—</span>
+        <span className='inline-block w-14' />
       </span>
     )
   }
@@ -33,12 +34,13 @@ export function IndexTicker({ symbol, data, className }: IndexTickerProps) {
   const sign = up ? '+' : ''
 
   return (
-    <span className={cn('flex items-baseline gap-1.5 text-sm tabular-nums', className)}>
-      <span className='font-semibold text-foreground'>{name}</span>
-      <span className='font-medium text-foreground'>
+    <span className={cn('inline-flex items-baseline gap-1.5 text-sm tabular-nums', className)}>
+      {/* Fixed widths on each slot prevent layout shift as values change */}
+      <span className='inline-block w-16 font-semibold text-foreground'>{name}</span>
+      <span className='inline-block w-20 text-right font-medium text-foreground'>
         {data.ltp.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
       </span>
-      <span className={cn('text-xs', up ? 'text-green-500' : 'text-red-500')}>
+      <span className={cn('inline-block w-14 text-right text-xs', up ? 'text-green-500' : 'text-red-500')}>
         {sign}{data.chp.toFixed(2)}%
       </span>
     </span>
