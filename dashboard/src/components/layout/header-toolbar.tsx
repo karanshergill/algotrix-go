@@ -12,14 +12,14 @@ const HEADER_PINNED = 'NSE:NIFTY50-INDEX'
 
 // Rotating tickers — cycle through on the right slot
 const HEADER_ROTATING = [
-  'NSE:BANKNIFTY-INDEX',
+  'NSE:NIFTYBANK-INDEX',
   'NSE:FINNIFTY-INDEX',
   'NSE:MIDCPNIFTY-INDEX',
   'NSE:NIFTYIT-INDEX',
   'NSE:NIFTYPHARMA-INDEX',
   'NSE:NIFTYMETAL-INDEX',
   'NSE:NIFTYAUTO-INDEX',
-  'NSE:NIFTYFMCG-INDEX',
+  'NSE:NIFTYREALTY-INDEX',
 ]
 
 const ALL_SYMBOLS = [HEADER_PINNED, ...HEADER_ROTATING]
@@ -34,8 +34,11 @@ export function HeaderToolbar() {
       {/* Index tickers */}
       <div className='hidden md:flex items-center gap-3'>
         <IndexTicker symbol={HEADER_PINNED} data={pinnedData} />
-        <span className='text-border'>|</span>
-        <IndexTickerRotator symbols={HEADER_ROTATING} quotes={quotes} intervalMs={4000} />
+        <span className='text-border select-none'>|</span>
+        {/* Fixed width prevents layout shift as different-length index names rotate */}
+        <div className='w-56 overflow-hidden'>
+          <IndexTickerRotator symbols={HEADER_ROTATING} quotes={quotes} intervalMs={4000} />
+        </div>
       </div>
 
       <Separator orientation='vertical' className='hidden md:block h-5' />
