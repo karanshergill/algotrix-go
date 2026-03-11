@@ -33,7 +33,7 @@ export function HeaderToolbar() {
     <div className='ml-auto flex items-center gap-3'>
       {/* Index tickers */}
       <div className='hidden md:flex items-center gap-3'>
-        <IndexTicker symbol={HEADER_PINNED} data={pinnedData} />
+        <IndexTicker symbol={HEADER_PINNED} data={pinnedData} compact />
         <span className='text-border select-none'>|</span>
         {/* Fixed width prevents layout shift as different-length index names rotate */}
         <div className='w-56 overflow-hidden'>

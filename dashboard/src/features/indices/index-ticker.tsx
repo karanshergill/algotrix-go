@@ -4,6 +4,8 @@ import type { IndexQuote } from './use-index-quotes'
 interface IndexTickerProps {
   symbol: string
   data?: IndexQuote
+  /** compact=true uses a tighter name slot (for pinned tickers with short names) */
+  compact?: boolean
   className?: string
 }
 
@@ -38,13 +40,15 @@ function displayName(symbol: string): string {
 // LTP:  w-[5rem]   covers 5-digit values like 23,905.9
 // Chp:  w-[4rem]   covers -1.47%
 
-export function IndexTicker({ symbol, data, className }: IndexTickerProps) {
+export function IndexTicker({ symbol, data, compact = false, className }: IndexTickerProps) {
   const name = displayName(symbol)
+  // Pinned (compact) tickers use a tight name slot; rotating slot needs room for long names
+  const nameW = compact ? 'w-[4.5rem]' : 'w-[6.5rem]'
 
   if (!data) {
     return (
       <span className={cn('inline-flex items-baseline text-sm tabular-nums whitespace-nowrap', className)}>
-        <span className='inline-block w-[6.5rem] font-semibold text-muted-foreground'>{name}</span>
+        <span className={cn('inline-block font-semibold text-muted-foreground', nameW)}>{name}</span>
         <span className='inline-block w-[5rem] text-right text-muted-foreground/40'>—</span>
         <span className='inline-block w-[4rem]' />
       </span>
@@ -56,7 +60,7 @@ export function IndexTicker({ symbol, data, className }: IndexTickerProps) {
 
   return (
     <span className={cn('inline-flex items-baseline text-sm tabular-nums whitespace-nowrap', className)}>
-      <span className='inline-block w-[6.5rem] font-semibold text-foreground leading-none'>{name}</span>
+      <span className={cn('inline-block font-semibold text-foreground leading-none', nameW)}>{name}</span>
       <span className='inline-block w-[5rem] text-right font-medium text-foreground'>
         {data.ltp.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
       </span>
