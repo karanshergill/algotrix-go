@@ -40,13 +40,28 @@ function recordTick() {
 }
 
 // GET /api/feed/status
-router.get('/status', (c) => {
+router.get('/status', async (c) => {
+  let ticksLastMinute = 0
+
+  if (state.status === 'connected') {
+    try {
+      // Query actual tick count from QuestDB (feed writes here)
+      const res = await fetch(
+        `http://localhost:9000/exec?query=SELECT+count()+FROM+nse_cm_ticks+WHERE+timestamp+>+dateadd('m',-1,now())`
+      )
+      if (res.ok) {
+        const json = await res.json() as { dataset?: [[number]] }
+        ticksLastMinute = json.dataset?.[0]?.[0] ?? 0
+      }
+    } catch { /* QuestDB unreachable */ }
+  }
+
   return c.json({
     status: state.status,
     pid: state.pid,
     startedAt: state.startedAt,
     symbolCount: state.symbolCount,
-    ticksLastMinute: state.ticksLastMinute,
+    ticksLastMinute,
     lastError: state.lastError,
   })
 })
@@ -90,12 +105,14 @@ router.post('/start', async (c) => {
 
   proc.stdout.on('data', (chunk: Buffer) => {
     const line = chunk.toString()
-    if (line.includes('all feeds running')) state.status = 'connected'
-    if (line.includes('websocket connected') || line.includes('DataSocket] connected')) {
+    if (
+      line.includes('all feeds running') ||
+      line.includes('websocket connected') ||
+      line.includes('DataSocket] connected') ||
+      line.includes('TBT] websocket connected')
+    ) {
       state.status = 'connected'
     }
-    // Count ticks from datasocket/tbt log lines
-    if (line.includes('depth #') || line.includes('first data')) recordTick()
   })
 
   proc.stderr.on('data', (chunk: Buffer) => {

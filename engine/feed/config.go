@@ -27,12 +27,9 @@ type DataSocketConfig struct {
 }
 
 type StorageConfig struct {
-	QuestDBILPHost  string `yaml:"questdb_ilp_host"`
-	QuestDBILPPort  int    `yaml:"questdb_ilp_port"`
-	QuestDBHTTPHost string `yaml:"questdb_http_host"`
-	QuestDBHTTPPort int    `yaml:"questdb_http_port"`
-	DepthTable      string `yaml:"depth_table"`
-	TicksTable      string `yaml:"ticks_table"`
+	PostgresDSN string `yaml:"postgres_dsn"`
+	DepthTable  string `yaml:"depth_table"`
+	TicksTable  string `yaml:"ticks_table"`
 }
 
 type FeedConfig struct {

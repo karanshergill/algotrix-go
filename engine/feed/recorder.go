@@ -1,16 +1,20 @@
 package feed
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Recorder struct {
 	configPath string
 	symbols    []string
 	config     *Config
+	pool       *pgxpool.Pool
 	tbt        *TBTFeed
 	datasocket *DataSocketFeed
 }
@@ -29,10 +33,22 @@ func (r *Recorder) Start(token string) error {
 	}
 	r.config = cfg
 
+	// Connect to PostgreSQL
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, cfg.Feed.Storage.PostgresDSN)
+	if err != nil {
+		return fmt.Errorf("connect to postgres: %w", err)
+	}
+	if err := pool.Ping(ctx); err != nil {
+		return fmt.Errorf("postgres ping failed: %w", err)
+	}
+	r.pool = pool
+	logTS("[Recorder] connected to postgres")
+
 	logTS("[Recorder] starting with %d symbols", len(r.symbols))
 
 	if cfg.Feed.TBT.Enabled {
-		r.tbt = NewTBTFeed(cfg, token, r.symbols)
+		r.tbt = NewTBTFeed(cfg, token, r.symbols, pool)
 		if err := r.tbt.Start(); err != nil {
 			return fmt.Errorf("start TBT feed: %w", err)
 		}
@@ -42,7 +58,7 @@ func (r *Recorder) Start(token string) error {
 	}
 
 	if cfg.Feed.DataSocket.Enabled {
-		r.datasocket = NewDataSocketFeed(cfg, token, r.symbols)
+		r.datasocket = NewDataSocketFeed(cfg, token, r.symbols, pool)
 		if err := r.datasocket.Start(); err != nil {
 			return fmt.Errorf("start DataSocket feed: %w", err)
 		}
@@ -68,6 +84,9 @@ func (r *Recorder) Stop() {
 	}
 	if r.datasocket != nil {
 		r.datasocket.Stop()
+	}
+	if r.pool != nil {
+		r.pool.Close()
 	}
 	logTS("[Recorder] shutdown complete")
 }

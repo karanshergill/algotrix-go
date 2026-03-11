@@ -1,13 +1,12 @@
 package feed
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"time"
 
 	fyersgosdk "github.com/FyersDev/fyers-go-sdk/websocket"
-	qdb "github.com/questdb/go-questdb-client/v4"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type DataSocketFeed struct {
@@ -15,7 +14,8 @@ type DataSocketFeed struct {
 	token   string
 	symbols []string
 	socket  *fyersgosdk.FyersDataSocket
-	writer  *ILPWriter
+	pool    *pgxpool.Pool
+	writer  *PGWriter
 
 	firstData map[string]bool
 	mu        sync.Mutex
@@ -23,11 +23,12 @@ type DataSocketFeed struct {
 	done      chan struct{}
 }
 
-func NewDataSocketFeed(config *Config, token string, symbols []string) *DataSocketFeed {
+func NewDataSocketFeed(config *Config, token string, symbols []string, pool *pgxpool.Pool) *DataSocketFeed {
 	return &DataSocketFeed{
 		config:    config,
 		token:     token,
 		symbols:   symbols,
+		pool:      pool,
 		firstData: make(map[string]bool),
 		done:      make(chan struct{}),
 	}
@@ -36,17 +37,7 @@ func NewDataSocketFeed(config *Config, token string, symbols []string) *DataSock
 func (f *DataSocketFeed) Start() error {
 	cfg := f.config.Feed
 
-	// Fix 1+3: Single-writer ILP with periodic flush.
-	writer, err := NewILPWriter(
-		cfg.Storage.QuestDBILPHost,
-		cfg.Storage.QuestDBILPPort,
-		cfg.DataSocket.FlushIntervalMs,
-		"DataSocket",
-	)
-	if err != nil {
-		return err
-	}
-	f.writer = writer
+	f.writer = NewPGWriter(f.pool, cfg.Storage.DepthTable, cfg.Storage.TicksTable, cfg.DataSocket.FlushIntervalMs, "DataSocket")
 
 	f.socket = fyersgosdk.NewFyersDataSocket(
 		f.token,
@@ -117,10 +108,8 @@ func (f *DataSocketFeed) onMessage(resp fyersgosdk.DataResponse) {
 		f.mu.Unlock()
 	}
 
-	table := f.config.Feed.Storage.TicksTable
 	ts := time.Now()
 
-	// Extract values before closure to avoid data race.
 	ltp, ltpOk := asFloat64(data["ltp"])
 	vol, volOk := asInt64(data["vol_traded_today"])
 	openP, openOk := asFloat64(data["open_price"])
@@ -130,42 +119,33 @@ func (f *DataSocketFeed) onMessage(resp fyersgosdk.DataResponse) {
 	ch, chOk := asFloat64(data["ch"])
 	chp, chpOk := asFloat64(data["chp"])
 
-	// Fix 1+3: Enqueue write to single-writer goroutine.
-	f.writer.Write(func(sender qdb.LineSender) {
-		ctx := context.Background()
+	row := TickRow{Ts: ts, Symbol: symbol}
+	if ltpOk {
+		row.Ltp = &ltp
+	}
+	if volOk {
+		row.Volume = &vol
+	}
+	if openOk {
+		row.Open = &openP
+	}
+	if highOk {
+		row.High = &highP
+	}
+	if lowOk {
+		row.Low = &lowP
+	}
+	if prevCloseOk {
+		row.PrevClose = &prevClose
+	}
+	if chOk {
+		row.Change = &ch
+	}
+	if chpOk {
+		row.ChangePct = &chp
+	}
 
-		sender.Table(table).
-			Symbol("symbol", symbol)
-
-		if ltpOk {
-			sender.Float64Column("ltp", ltp)
-		}
-		if volOk {
-			sender.Int64Column("volume", vol)
-		}
-		if openOk {
-			sender.Float64Column("open", openP)
-		}
-		if highOk {
-			sender.Float64Column("high", highP)
-		}
-		if lowOk {
-			sender.Float64Column("low", lowP)
-		}
-		if prevCloseOk {
-			sender.Float64Column("prev_close", prevClose)
-		}
-		if chOk {
-			sender.Float64Column("change", ch)
-		}
-		if chpOk {
-			sender.Float64Column("change_pct", chp)
-		}
-
-		if err := sender.At(ctx, ts); err != nil {
-			logTS("[DataSocket] ILP write error for %s: %v", symbol, err)
-		}
-	})
+	f.writer.WriteTick(row)
 }
 
 // Fix 6: No reflection. Exhaustive type matching including SDK's FloatSDK.

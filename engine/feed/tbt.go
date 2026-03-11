@@ -2,7 +2,6 @@ package feed
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,7 +11,7 @@ import (
 
 	pb "github.com/karanshergill/algotrix-go/feed/proto"
 	"github.com/gorilla/websocket"
-	qdb "github.com/questdb/go-questdb-client/v4"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -29,7 +28,8 @@ type TBTFeed struct {
 	token   string
 	symbols []string
 	conn    *websocket.Conn
-	writer  *ILPWriter
+	pool    *pgxpool.Pool
+	writer  *PGWriter
 
 	// Token ID → readable symbol mapping (e.g. "10100000002885" → "NSE:RELIANCE-EQ").
 	tokenToSymbol map[string]string
@@ -44,11 +44,12 @@ type TBTFeed struct {
 	reconnectFailed chan struct{}
 }
 
-func NewTBTFeed(config *Config, token string, symbols []string) *TBTFeed {
+func NewTBTFeed(config *Config, token string, symbols []string, pool *pgxpool.Pool) *TBTFeed {
 	return &TBTFeed{
 		config:          config,
 		token:           token,
 		symbols:         symbols,
+		pool:            pool,
 		tokenToSymbol:   make(map[string]string),
 		lastSnapshot:    make(map[string]time.Time),
 		done:            make(chan struct{}),
@@ -158,17 +159,7 @@ func (f *TBTFeed) Start() error {
 		logTS("[TBT] WARN: token map build failed: %v (will use raw token IDs)", err)
 	}
 
-	// Fix 1+3: Single-writer ILP with periodic flush.
-	writer, err := NewILPWriter(
-		cfg.Storage.QuestDBILPHost,
-		cfg.Storage.QuestDBILPPort,
-		cfg.TBT.FlushIntervalMs,
-		"TBT",
-	)
-	if err != nil {
-		return err
-	}
-	f.writer = writer
+	f.writer = NewPGWriter(f.pool, cfg.Storage.DepthTable, cfg.Storage.TicksTable, cfg.TBT.FlushIntervalMs, "TBT")
 
 	// Connect WebSocket.
 	if err := f.connect(); err != nil {
@@ -389,7 +380,6 @@ func (f *TBTFeed) onDepthUpdate(symbol string, feed *pb.MarketFeed, isSnapshot b
 	}
 
 	depth := feed.Depth
-	table := f.config.Feed.Storage.DepthTable
 	maxLevels := f.config.Feed.TBT.MaxDepthLevels
 	ts := now
 
@@ -420,61 +410,50 @@ func (f *TBTFeed) onDepthUpdate(symbol string, feed *pb.MarketFeed, isSnapshot b
 		}
 	}
 
-	// Fix 1+3: Enqueue write to single-writer goroutine.
-	f.writer.Write(func(sender qdb.LineSender) {
-		ctx := context.Background()
+	// Build depth levels
+	bids := make([]DepthLevel, 0, min(maxLevels, len(depth.Bids)))
+	asks := make([]DepthLevel, 0, min(maxLevels, len(depth.Asks)))
 
-		sender.Table(table).
-			Symbol("symbol", symbol).
-			Int64Column("tbq", tbq).
-			Int64Column("tsq", tsq).
-			Float64Column("best_bid", bestBid).
-			Float64Column("best_ask", bestAsk).
-			Float64Column("best_bid_qty", bestBidQty).
-			Float64Column("best_ask_qty", bestAskQty)
-
-		// Fix 7: Configurable depth levels.
-		for i := 0; i < maxLevels; i++ {
-			var bidPrice, bidQty, bidOrders float64
-			var askPrice, askQty, askOrders float64
-
-			if i < len(depth.Bids) {
-				bid := depth.Bids[i]
-				if bid.Price != nil {
-					bidPrice = float64(bid.Price.Value) / 100.0
-				}
-				if bid.Qty != nil {
-					bidQty = float64(bid.Qty.Value)
-				}
-				if bid.Nord != nil {
-					bidOrders = float64(bid.Nord.Value)
-				}
-			}
-			if i < len(depth.Asks) {
-				ask := depth.Asks[i]
-				if ask.Price != nil {
-					askPrice = float64(ask.Price.Value) / 100.0
-				}
-				if ask.Qty != nil {
-					askQty = float64(ask.Qty.Value)
-				}
-				if ask.Nord != nil {
-					askOrders = float64(ask.Nord.Value)
-				}
-			}
-
-			sender.
-				Float64Column(fmt.Sprintf("bid_price_%d", i), bidPrice).
-				Float64Column(fmt.Sprintf("bid_qty_%d", i), bidQty).
-				Float64Column(fmt.Sprintf("bid_orders_%d", i), bidOrders).
-				Float64Column(fmt.Sprintf("ask_price_%d", i), askPrice).
-				Float64Column(fmt.Sprintf("ask_qty_%d", i), askQty).
-				Float64Column(fmt.Sprintf("ask_orders_%d", i), askOrders)
+	for i := 0; i < maxLevels && i < len(depth.Bids); i++ {
+		bid := depth.Bids[i]
+		var price, qty, orders float64
+		if bid.Price != nil {
+			price = float64(bid.Price.Value) / 100.0
 		}
-
-		if err := sender.At(ctx, ts); err != nil {
-			logTS("[TBT] ILP write error for %s: %v", symbol, err)
+		if bid.Qty != nil {
+			qty = float64(bid.Qty.Value)
 		}
+		if bid.Nord != nil {
+			orders = float64(bid.Nord.Value)
+		}
+		bids = append(bids, DepthLevel{Price: price, Qty: qty, Orders: orders})
+	}
+	for i := 0; i < maxLevels && i < len(depth.Asks); i++ {
+		ask := depth.Asks[i]
+		var price, qty, orders float64
+		if ask.Price != nil {
+			price = float64(ask.Price.Value) / 100.0
+		}
+		if ask.Qty != nil {
+			qty = float64(ask.Qty.Value)
+		}
+		if ask.Nord != nil {
+			orders = float64(ask.Nord.Value)
+		}
+		asks = append(asks, DepthLevel{Price: price, Qty: qty, Orders: orders})
+	}
+
+	f.writer.WriteDepth(DepthRow{
+		Ts:         ts,
+		Symbol:     symbol,
+		Tbq:        tbq,
+		Tsq:        tsq,
+		BestBid:    bestBid,
+		BestAsk:    bestAsk,
+		BestBidQty: bestBidQty,
+		BestAskQty: bestAskQty,
+		Bids:       bids,
+		Asks:       asks,
 	})
 }
 
