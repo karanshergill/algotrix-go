@@ -1,12 +1,13 @@
 import { Hono } from 'hono'
-import { readFile } from 'node:fs/promises'
-import { spawn } from 'node:child_process'
+import { readFile, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 
 const router = new Hono()
 
-const ENGINE_PATH = path.resolve(process.cwd(), 'engine/algotrix')
 const TOKEN_PATH = path.resolve(process.cwd(), 'engine/token.json')
+const CONFIG_PATH = path.resolve(process.cwd(), 'engine/internal/config/fyers.yaml')
+const VALIDATE_URL = 'https://api-t1.fyers.in/api/v3/validate-authcode'
 
 interface TokenFile {
   access_token: string
@@ -52,95 +53,80 @@ router.get('/status', async (c) => {
   }
 })
 
-// GET /api/auth/login-url
+// GET /api/auth/login-url — build URL directly from config, no engine spawn needed
 router.get('/login-url', async (c) => {
-  return new Promise<Response>((resolve) => {
-    const proc = spawn(ENGINE_PATH, ['auth'], {
-      cwd: path.resolve(process.cwd(), 'engine'),
-      env: process.env,
-    })
+  try {
+    const configRaw = await readFile(
+      path.resolve(process.cwd(), 'engine/internal/config/fyers.yaml'),
+      'utf-8'
+    )
+    const appIdMatch = configRaw.match(/app_id:\s*"([^"]+)"/)
+    const redirectMatch = configRaw.match(/redirect_url:\s*"([^"]+)"/)
 
-    let url = ''
-    let buffer = ''
+    if (!appIdMatch || !redirectMatch) {
+      return c.json({ error: 'Could not read Fyers config' }, 500)
+    }
 
-    proc.stdout.on('data', (chunk: Buffer) => {
-      buffer += chunk.toString()
-      const match = buffer.match(/https:\/\/api-t1\.fyers\.in\/[^\s\n]+/)
-      if (match && !url) {
-        url = match[0]
-        resolve(c.json({ url }) as unknown as Response)
-        // Don't kill proc — it's waiting for stdin (auth code)
-        // Let it timeout naturally
-        proc.kill()
-      }
-    })
+    const appId = appIdMatch[1]
+    const redirectUrl = redirectMatch[1]
+    const url =
+      `https://api-t1.fyers.in/api/v3/generate-authcode` +
+      `?client_id=${encodeURIComponent(appId)}` +
+      `&redirect_uri=${encodeURIComponent(redirectUrl)}` +
+      `&response_type=code` +
+      `&state=sample_state`
 
-    proc.stderr.on('data', (chunk: Buffer) => {
-      buffer += chunk.toString()
-      const match = buffer.match(/https:\/\/api-t1\.fyers\.in\/[^\s\n]+/)
-      if (match && !url) {
-        url = match[0]
-        resolve(c.json({ url }) as unknown as Response)
-        proc.kill()
-      }
-    })
-
-    proc.on('close', () => {
-      if (!url) {
-        resolve(c.json({ error: 'Could not get login URL' }, 500) as unknown as Response)
-      }
-    })
-
-    setTimeout(() => {
-      if (!url) {
-        proc.kill()
-        resolve(c.json({ error: 'Timeout getting login URL' }, 500) as unknown as Response)
-      }
-    }, 10_000)
-  })
+    return c.json({ url })
+  } catch {
+    return c.json({ error: 'Could not get login URL' }, 500)
+  }
 })
 
-// POST /api/auth/exchange  body: { code: string }
+// POST /api/auth/exchange  body: { code: string } — code may be the auth_code or full redirect URL
 router.post('/exchange', async (c) => {
-  const { code } = await c.req.json<{ code: string }>()
-  if (!code?.trim()) {
-    return c.json({ error: 'Auth code required' }, 400)
+  let { code } = await c.req.json<{ code: string }>()
+  if (!code?.trim()) return c.json({ error: 'Auth code required' }, 400)
+
+  // Accept full redirect URL — extract auth_code param
+  if (code.includes('://')) {
+    try {
+      const u = new URL(code.trim())
+      code = u.searchParams.get('auth_code') ?? code
+    } catch { /* not a URL, use as-is */ }
+  }
+  code = code.trim()
+
+  // Read app credentials from config
+  const configRaw = await readFile(CONFIG_PATH, 'utf-8')
+  const appIdMatch = configRaw.match(/app_id:\s*"([^"]+)"/)
+  const secretMatch = configRaw.match(/secret_key:\s*"([^"]+)"/)
+  if (!appIdMatch || !secretMatch) return c.json({ error: 'Could not read config' }, 500)
+
+  const appId = appIdMatch[1]
+  const secretKey = secretMatch[1]
+  const appIdHash = createHash('sha256').update(`${appId}:${secretKey}`).digest('hex')
+
+  // Exchange code for token via Fyers API
+  const res = await fetch(VALIDATE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, appIdHash, grant_type: 'authorization_code' }),
+  })
+  const data = await res.json() as Record<string, unknown>
+
+  if (data.s !== 'ok' || !data.access_token) {
+    return c.json({ error: (data.message as string) ?? 'Token exchange failed' }, 400)
   }
 
-  return new Promise<Response>((resolve) => {
-    const proc = spawn(ENGINE_PATH, ['auth'], {
-      cwd: path.resolve(process.cwd(), 'engine'),
-      env: process.env,
-    })
+  // Save token to token.json (same format as Go engine)
+  const tokenData = {
+    access_token: data.access_token as string,
+    refresh_token: (data.refresh_token as string) ?? '',
+    created_at: new Date().toISOString(),
+  }
+  await writeFile(TOKEN_PATH, JSON.stringify(tokenData, null, 2))
 
-    let output = ''
-
-    proc.stdout.on('data', (chunk: Buffer) => {
-      output += chunk.toString()
-      // When it asks for auth_code, write the code
-      if (output.includes('Paste the auth_code')) {
-        proc.stdin.write(code.trim() + '\n')
-      }
-    })
-
-    proc.stderr.on('data', (chunk: Buffer) => {
-      output += chunk.toString()
-    })
-
-    proc.on('close', (exitCode) => {
-      if (exitCode === 0 && output.includes('Token saved')) {
-        resolve(c.json({ success: true }) as unknown as Response)
-      } else {
-        const errMatch = output.match(/error[:\s]+(.+)/i)
-        resolve(c.json({ error: errMatch?.[1] ?? 'Token exchange failed' }, 500) as unknown as Response)
-      }
-    })
-
-    setTimeout(() => {
-      proc.kill()
-      resolve(c.json({ error: 'Timeout during token exchange' }, 500) as unknown as Response)
-    }, 30_000)
-  })
+  return c.json({ success: true })
 })
 
 export default router

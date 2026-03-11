@@ -15,5 +15,9 @@ feed:
     max_reconnect_attempts: 50
     log_path: ./logs
   storage:
+    questdb_ilp_host: localhost
+    questdb_ilp_port: 9009
+    questdb_http_host: localhost
+    questdb_http_port: 9000
     depth_table: nse_cm_depth
     ticks_table: nse_cm_ticks

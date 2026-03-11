@@ -151,7 +151,7 @@ export function TokenStatus() {
               <div className='space-y-1.5'>
                 <Label className='text-xs'>Auth code</Label>
                 <Input
-                  placeholder='Paste auth_code here'
+                  placeholder='Paste redirect URL or auth_code'
                   value={authCode}
                   onChange={(e) => setAuthCode(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && exchangeCode()}
