@@ -20,8 +20,8 @@ type DepthLevel struct {
 
 // DepthRow is one depth snapshot row for nse_cm_depth.
 type DepthRow struct {
-	Ts          time.Time
-	Symbol      string
+	Timestamp   time.Time
+	ISIN        string
 	Tbq         int64
 	Tsq         int64
 	BestBid     float64
@@ -34,8 +34,8 @@ type DepthRow struct {
 
 // TickRow is one tick row for nse_cm_ticks.
 type TickRow struct {
-	Ts        time.Time
-	Symbol    string
+	Timestamp time.Time
+	ISIN      string
 	Ltp       *float64
 	Volume    *int64
 	Open      *float64
@@ -90,7 +90,7 @@ func (w *PGWriter) WriteDepth(row DepthRow) {
 	select {
 	case w.depthCh <- row:
 	default:
-		logTS("[%s] depth channel full, dropping row for %s", w.name, row.Symbol)
+		logTS("[%s] depth channel full, dropping row for %s", w.name, row.ISIN)
 	}
 }
 
@@ -101,7 +101,7 @@ func (w *PGWriter) WriteTick(row TickRow) {
 	select {
 	case w.tickCh <- row:
 	default:
-		logTS("[%s] tick channel full, dropping row for %s", w.name, row.Symbol)
+		logTS("[%s] tick channel full, dropping row for %s", w.name, row.ISIN)
 	}
 }
 
@@ -159,14 +159,14 @@ func (w *PGWriter) flushDepth(rows []DepthRow) {
 		bidsJSON, _ := json.Marshal(r.Bids)
 		asksJSON, _ := json.Marshal(r.Asks)
 		inputRows = append(inputRows, []interface{}{
-			r.Ts, r.Symbol,
+			r.Timestamp, r.ISIN,
 			r.Tbq, r.Tsq,
 			r.BestBid, r.BestAsk, r.BestBidQty, r.BestAskQty,
 			bidsJSON, asksJSON,
 		})
 	}
 
-	cols := []string{"ts", "symbol", "tbq", "tsq", "best_bid", "best_ask", "best_bid_qty", "best_ask_qty", "bids", "asks"}
+	cols := []string{"timestamp", "isin", "tbq", "tsq", "best_bid", "best_ask", "best_bid_qty", "best_ask_qty", "bids", "asks"}
 	n, err := w.pool.CopyFrom(
 		ctx,
 		pgx.Identifier{w.depthTable},
@@ -189,14 +189,14 @@ func (w *PGWriter) flushTicks(rows []TickRow) {
 	inputRows := make([][]interface{}, 0, len(rows))
 	for _, r := range rows {
 		inputRows = append(inputRows, []interface{}{
-			r.Ts, r.Symbol,
+			r.Timestamp, r.ISIN,
 			r.Ltp, r.Volume,
 			r.Open, r.High, r.Low, r.PrevClose,
 			r.Change, r.ChangePct,
 		})
 	}
 
-	cols := []string{"ts", "symbol", "ltp", "volume", "open", "high", "low", "prev_close", "change", "change_pct"}
+	cols := []string{"timestamp", "isin", "ltp", "volume", "open", "high", "low", "prev_close", "change", "change_pct"}
 	n, err := w.pool.CopyFrom(
 		ctx,
 		pgx.Identifier{w.ticksTable},

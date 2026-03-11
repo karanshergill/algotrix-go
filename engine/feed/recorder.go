@@ -26,6 +26,27 @@ func NewRecorder(configPath string, symbols []string) *Recorder {
 	}
 }
 
+// buildSymbolToISIN queries the symbols table for a fy_symbol → isin map.
+// The feed receives and resolves Fyers symbols (e.g. "NSE:RELIANCE-EQ"), so
+// we key by fy_symbol to match what arrives from the websocket.
+func buildSymbolToISIN(ctx context.Context, pool *pgxpool.Pool) (map[string]string, error) {
+	rows, err := pool.Query(ctx, "SELECT fy_symbol, isin FROM symbols WHERE status = 'active'")
+	if err != nil {
+		return nil, fmt.Errorf("query symbol→isin map: %w", err)
+	}
+	defer rows.Close()
+
+	m := make(map[string]string)
+	for rows.Next() {
+		var fySymbol, isin string
+		if err := rows.Scan(&fySymbol, &isin); err != nil {
+			return nil, fmt.Errorf("scan symbol→isin row: %w", err)
+		}
+		m[fySymbol] = isin
+	}
+	return m, rows.Err()
+}
+
 func (r *Recorder) Start(token string) error {
 	cfg, err := LoadConfig(r.configPath)
 	if err != nil {
@@ -45,10 +66,17 @@ func (r *Recorder) Start(token string) error {
 	r.pool = pool
 	logTS("[Recorder] connected to postgres")
 
+	// Build fy_symbol → ISIN lookup map (single DB query, shared by both feeds).
+	symbolToISIN, err := buildSymbolToISIN(ctx, pool)
+	if err != nil {
+		return fmt.Errorf("build symbol→isin map: %w", err)
+	}
+	logTS("[Recorder] symbol→isin map built: %d entries", len(symbolToISIN))
+
 	logTS("[Recorder] starting with %d symbols", len(r.symbols))
 
 	if cfg.Feed.TBT.Enabled {
-		r.tbt = NewTBTFeed(cfg, token, r.symbols, pool)
+		r.tbt = NewTBTFeed(cfg, token, r.symbols, pool, symbolToISIN)
 		if err := r.tbt.Start(); err != nil {
 			return fmt.Errorf("start TBT feed: %w", err)
 		}
@@ -58,7 +86,7 @@ func (r *Recorder) Start(token string) error {
 	}
 
 	if cfg.Feed.DataSocket.Enabled {
-		r.datasocket = NewDataSocketFeed(cfg, token, r.symbols, pool)
+		r.datasocket = NewDataSocketFeed(cfg, token, r.symbols, pool, symbolToISIN)
 		if err := r.datasocket.Start(); err != nil {
 			return fmt.Errorf("start DataSocket feed: %w", err)
 		}

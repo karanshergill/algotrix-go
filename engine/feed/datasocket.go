@@ -10,12 +10,13 @@ import (
 )
 
 type DataSocketFeed struct {
-	config  *Config
-	token   string
-	symbols []string
-	socket  *fyersgosdk.FyersDataSocket
-	pool    *pgxpool.Pool
-	writer  *PGWriter
+	config       *Config
+	token        string
+	symbols      []string
+	socket       *fyersgosdk.FyersDataSocket
+	pool         *pgxpool.Pool
+	writer       *PGWriter
+	symbolToISIN map[string]string
 
 	firstData map[string]bool
 	mu        sync.Mutex
@@ -23,14 +24,15 @@ type DataSocketFeed struct {
 	done      chan struct{}
 }
 
-func NewDataSocketFeed(config *Config, token string, symbols []string, pool *pgxpool.Pool) *DataSocketFeed {
+func NewDataSocketFeed(config *Config, token string, symbols []string, pool *pgxpool.Pool, symbolToISIN map[string]string) *DataSocketFeed {
 	return &DataSocketFeed{
-		config:    config,
-		token:     token,
-		symbols:   symbols,
-		pool:      pool,
-		firstData: make(map[string]bool),
-		done:      make(chan struct{}),
+		config:       config,
+		token:        token,
+		symbols:      symbols,
+		pool:         pool,
+		symbolToISIN: symbolToISIN,
+		firstData:    make(map[string]bool),
+		done:         make(chan struct{}),
 	}
 }
 
@@ -99,11 +101,17 @@ func (f *DataSocketFeed) onMessage(resp fyersgosdk.DataResponse) {
 		return
 	}
 
+	isin, ok := f.symbolToISIN[symbol]
+	if !ok {
+		logTS("[DataSocket] WARN: no ISIN for symbol %s, skipping row", symbol)
+		return
+	}
+
 	f.mu.Lock()
 	if !f.firstData[symbol] {
 		f.firstData[symbol] = true
 		f.mu.Unlock()
-		logTS("[DataSocket] first data received for %s", symbol)
+		logTS("[DataSocket] first data received for %s (%s)", symbol, isin)
 	} else {
 		f.mu.Unlock()
 	}
@@ -119,7 +127,7 @@ func (f *DataSocketFeed) onMessage(resp fyersgosdk.DataResponse) {
 	ch, chOk := asFloat64(data["ch"])
 	chp, chpOk := asFloat64(data["chp"])
 
-	row := TickRow{Ts: ts, Symbol: symbol}
+	row := TickRow{Timestamp: ts, ISIN: isin}
 	if ltpOk {
 		row.Ltp = &ltp
 	}

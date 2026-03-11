@@ -31,8 +31,10 @@ type TBTFeed struct {
 	pool    *pgxpool.Pool
 	writer  *PGWriter
 
-	// Token ID → readable symbol mapping (e.g. "10100000002885" → "NSE:RELIANCE-EQ").
+	// Token ID → readable Fyers symbol mapping (e.g. "10100000002885" → "NSE:RELIANCE-EQ").
 	tokenToSymbol map[string]string
+	// Fyers symbol → ISIN mapping (e.g. "NSE:RELIANCE-EQ" → "INE002A01018").
+	symbolToISIN map[string]string
 
 	lastSnapshot map[string]time.Time
 	mu           sync.Mutex
@@ -44,13 +46,14 @@ type TBTFeed struct {
 	reconnectFailed chan struct{}
 }
 
-func NewTBTFeed(config *Config, token string, symbols []string, pool *pgxpool.Pool) *TBTFeed {
+func NewTBTFeed(config *Config, token string, symbols []string, pool *pgxpool.Pool, symbolToISIN map[string]string) *TBTFeed {
 	return &TBTFeed{
 		config:          config,
 		token:           token,
 		symbols:         symbols,
 		pool:            pool,
 		tokenToSymbol:   make(map[string]string),
+		symbolToISIN:    symbolToISIN,
 		lastSnapshot:    make(map[string]time.Time),
 		done:            make(chan struct{}),
 		connDone:        make(chan struct{}),
@@ -362,6 +365,12 @@ func (f *TBTFeed) tryReconnect() {
 }
 
 func (f *TBTFeed) onDepthUpdate(symbol string, feed *pb.MarketFeed, isSnapshot bool) {
+	isin, ok := f.symbolToISIN[symbol]
+	if !ok {
+		logTS("[TBT] WARN: no ISIN for symbol %s, skipping row", symbol)
+		return
+	}
+
 	now := time.Now()
 	intervalMs := f.config.Feed.TBT.SnapshotIntervalMs
 	interval := time.Duration(intervalMs) * time.Millisecond
@@ -376,7 +385,7 @@ func (f *TBTFeed) onDepthUpdate(symbol string, feed *pb.MarketFeed, isSnapshot b
 	f.mu.Unlock()
 
 	if !exists {
-		logTS("[TBT] first depth for %s", symbol)
+		logTS("[TBT] first depth for %s (%s)", symbol, isin)
 	}
 
 	depth := feed.Depth
@@ -444,8 +453,8 @@ func (f *TBTFeed) onDepthUpdate(symbol string, feed *pb.MarketFeed, isSnapshot b
 	}
 
 	f.writer.WriteDepth(DepthRow{
-		Ts:         ts,
-		Symbol:     symbol,
+		Timestamp:  ts,
+		ISIN:       isin,
 		Tbq:        tbq,
 		Tsq:        tsq,
 		BestBid:    bestBid,
