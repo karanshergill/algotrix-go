@@ -19,7 +19,7 @@ interface FeedState {
   tickTimestamps: number[] // rolling window for ticks/min
 }
 
-const state: FeedState = {
+export const state: FeedState = {
   proc: null,
   pid: null,
   startedAt: null,
