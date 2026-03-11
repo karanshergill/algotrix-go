@@ -35,8 +35,8 @@ export function HeaderToolbar() {
       <div className='hidden md:flex items-center gap-3'>
         <IndexTicker symbol={HEADER_PINNED} data={pinnedData} compact />
         <span className='text-border select-none'>|</span>
-        {/* Fixed width prevents layout shift as different-length index names rotate */}
-        <div className='w-56 overflow-hidden'>
+        {/* w-[15.5rem] = exact sum of ticker slots (6.5+5+4rem) — no overflow clipping */}
+        <div className='w-[15.5rem]'>
           <IndexTickerRotator symbols={HEADER_ROTATING} quotes={quotes} intervalMs={4000} />
         </div>
       </div>

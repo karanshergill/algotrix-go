@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react'
-import { cn } from '@/lib/utils'
+import { useEffect, useRef, useState } from 'react'
 import { IndexTicker } from './index-ticker'
 import type { IndexQuote } from './use-index-quotes'
 
@@ -11,32 +10,33 @@ interface IndexTickerRotatorProps {
 
 export function IndexTickerRotator({ symbols, quotes, intervalMs = 4000 }: IndexTickerRotatorProps) {
   const [index, setIndex] = useState(0)
-  const [visible, setVisible] = useState(true)
+  const [tick, setTick] = useState(0) // increment to trigger re-animation on same symbol
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     if (symbols.length <= 1) return
 
-    const timer = setInterval(() => {
-      // Fade out
-      setVisible(false)
-      setTimeout(() => {
-        setIndex((i) => (i + 1) % symbols.length)
-        setVisible(true)
-      }, 250) // 250ms fade-out, then swap + fade-in
+    timerRef.current = setInterval(() => {
+      setIndex((i) => (i + 1) % symbols.length)
+      setTick((t) => t + 1)
     }, intervalMs)
 
-    return () => clearInterval(timer)
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
   }, [symbols.length, intervalMs])
 
   const currentSymbol = symbols[index]
   const currentData = quotes.find((q) => q.symbol === currentSymbol)
 
   return (
+    // key forces a DOM remount on each rotation, triggering the CSS entrance animation
     <span
-      className={cn(
-        'transition-opacity duration-250',
-        visible ? 'opacity-100' : 'opacity-0'
-      )}
+      key={tick}
+      style={{
+        display: 'inline-block',
+        animation: 'ticker-slide-in 0.3s ease-out forwards',
+      }}
     >
       <IndexTicker symbol={currentSymbol} data={currentData} />
     </span>

@@ -85,3 +85,15 @@
     height: 0;
   }
 }
+
+/* Index ticker slide-in animation */
+@keyframes ticker-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
