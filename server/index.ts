@@ -20,18 +20,6 @@ app.route('/api/symbols', symbols)
 
 app.get('/api/health', (c) => c.json({ status: 'ok' }))
 
-// QuestDB proxy — forward /api/questdb/* to localhost:9000
-app.all('/api/questdb/*', async (c) => {
-  const path = c.req.path.replace('/api/questdb', '')
-  const search = new URL(c.req.url).search
-  const url = `http://localhost:9000${path}${search}`
-  const res = await fetch(url, { method: c.req.method, body: c.req.raw.body })
-  const body = await res.text()
-  return new Response(body, {
-    status: res.status,
-    headers: { 'Content-Type': res.headers.get('Content-Type') ?? 'application/json' },
-  })
-})
 
 const port = 3001
 console.log(`API server running on http://localhost:${port}`)

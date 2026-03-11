@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { spawn, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
-import pool from '../db'
+import db from '../db'
 
 const router = new Hono()
 
@@ -45,15 +45,11 @@ router.get('/status', async (c) => {
 
   if (state.status === 'connected') {
     try {
-      // Query actual tick count from QuestDB (feed writes here)
-      const res = await fetch(
-        `http://localhost:9000/exec?query=SELECT+count()+FROM+nse_cm_ticks+WHERE+timestamp+>+dateadd('m',-1,now())`
+      const result = await db.query(
+        `SELECT COUNT(*) FROM nse_cm_ticks WHERE ts > NOW() - INTERVAL '1 minute'`
       )
-      if (res.ok) {
-        const json = await res.json() as { dataset?: [[number]] }
-        ticksLastMinute = json.dataset?.[0]?.[0] ?? 0
-      }
-    } catch { /* QuestDB unreachable */ }
+      ticksLastMinute = parseInt(result.rows[0]?.count ?? '0', 10)
+    } catch { /* db unreachable */ }
   }
 
   return c.json({
@@ -74,8 +70,8 @@ router.post('/start', async (c) => {
 
   // Fetch all active equity fy_symbols + index fy_symbols
   const [equityRows, indexRows] = await Promise.all([
-    pool.query(`SELECT fy_symbol FROM symbols WHERE status = 'active' ORDER BY fy_symbol`),
-    pool.query(`SELECT fy_symbol FROM indices WHERE is_active = true ORDER BY fy_symbol`),
+    db.query(`SELECT fy_symbol FROM symbols WHERE status = 'active' ORDER BY fy_symbol`),
+    db.query(`SELECT fy_symbol FROM indices WHERE is_active = true ORDER BY fy_symbol`),
   ])
 
   const symbols = [
