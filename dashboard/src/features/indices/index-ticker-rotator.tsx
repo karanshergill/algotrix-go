@@ -6,15 +6,16 @@ interface IndexTickerRotatorProps {
   symbols: string[]
   quotes: IndexQuote[]
   intervalMs?: number
+  active?: boolean  // when false, rotation stops
 }
 
-export function IndexTickerRotator({ symbols, quotes, intervalMs = 4000 }: IndexTickerRotatorProps) {
+export function IndexTickerRotator({ symbols, quotes, intervalMs = 4000, active = true }: IndexTickerRotatorProps) {
   const [index, setIndex] = useState(0)
   const [tick, setTick] = useState(0) // increment to trigger re-animation on same symbol
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
-    if (symbols.length <= 1) return
+    if (symbols.length <= 1 || !active) return
 
     timerRef.current = setInterval(() => {
       setIndex((i) => (i + 1) % symbols.length)
@@ -24,7 +25,7 @@ export function IndexTickerRotator({ symbols, quotes, intervalMs = 4000 }: Index
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [symbols.length, intervalMs])
+  }, [symbols.length, intervalMs, active])
 
   const currentSymbol = symbols[index]
   const currentData = quotes.find((q) => q.symbol === currentSymbol)

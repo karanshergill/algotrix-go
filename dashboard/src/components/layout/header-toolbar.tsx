@@ -7,6 +7,15 @@ import { ProfileDropdown } from '@/components/profile-dropdown'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { Separator } from '@/components/ui/separator'
 
+function isMarketOpen(): boolean {
+  const now = new Date()
+  const ist = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
+  const day = ist.getDay()
+  if (day === 0 || day === 6) return false
+  const t = ist.getHours() * 60 + ist.getMinutes()
+  return t >= 9 * 60 + 15 && t <= 15 * 60 + 30
+}
+
 // Pinned ticker — always visible on the left
 const HEADER_PINNED = 'NSE:NIFTY50-INDEX'
 
@@ -26,6 +35,7 @@ const ALL_SYMBOLS = [HEADER_PINNED, ...HEADER_ROTATING]
 
 export function HeaderToolbar() {
   const { data: quotes = [] } = useIndexQuotes(ALL_SYMBOLS)
+  const marketOpen = isMarketOpen()
 
   const pinnedData = quotes.find((q) => q.symbol === HEADER_PINNED)
 
@@ -37,7 +47,7 @@ export function HeaderToolbar() {
         <span className='text-border select-none'>|</span>
         {/* w-[15.5rem] = exact sum of ticker slots (6.5+5+4rem) — no overflow clipping */}
         <div className='w-[15.5rem]'>
-          <IndexTickerRotator symbols={HEADER_ROTATING} quotes={quotes} intervalMs={4000} />
+          <IndexTickerRotator symbols={HEADER_ROTATING} quotes={quotes} intervalMs={4000} active={marketOpen} />
         </div>
       </div>
 
