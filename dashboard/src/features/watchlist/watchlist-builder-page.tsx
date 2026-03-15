@@ -1,0 +1,186 @@
+import { useState } from 'react'
+import { Crosshair, RefreshCw } from 'lucide-react'
+import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { HeaderToolbar } from '@/components/layout/header-toolbar'
+import { useWatchlistBuild } from './use-watchlist-build'
+import { WatchlistFunnel } from './watchlist-funnel'
+import { WatchlistTable } from './watchlist-table'
+import { WatchlistScoreChart } from './watchlist-score-chart'
+import { WatchlistDetailDrawer } from './watchlist-detail-drawer'
+import type { BuildParams } from './types'
+
+export function WatchlistBuilderPage() {
+  const [params, setParams] = useState<BuildParams>({ lookback: 30, fnoOnly: false })
+  const [submitted, setSubmitted] = useState<BuildParams | null>(null)
+  const [selectedSymbol, setSelectedSymbol] = useState('')
+  const [drawerOpen, setDrawerOpen] = useState(false)
+
+  const { data, isLoading, isFetching } = useWatchlistBuild(
+    submitted ?? params,
+    submitted !== null
+  )
+
+  const symbolMap = data?.Symbols ?? {}
+
+  const handleBuild = () => {
+    setSubmitted({ ...params })
+  }
+
+  const handleRowClick = (isin: string) => {
+    const sym = symbolMap[isin] ?? isin
+    setSelectedSymbol(sym)
+    setDrawerOpen(true)
+  }
+
+  return (
+    <div className='flex flex-col h-full'>
+      {/* Header */}
+      <div className='flex items-center justify-between px-6 py-4 border-b border-border shrink-0'>
+        <div className='flex items-center gap-3'>
+          <div className='p-2 rounded-lg bg-primary/10'>
+            <Crosshair size={18} className='text-primary' />
+          </div>
+          <div>
+            <h1 className='text-lg font-semibold'>Watchlist Builder</h1>
+            <p className='text-xs text-muted-foreground'>
+              5-metric scoring engine &middot; percentile ranked
+            </p>
+          </div>
+        </div>
+        <HeaderToolbar />
+      </div>
+
+      {/* Config bar */}
+      <div className='px-6 py-4 border-b border-border/50 shrink-0'>
+        <div className='flex items-end gap-4 flex-wrap'>
+          <div className='space-y-1'>
+            <Label htmlFor='lookback' className='text-xs'>Lookback (days)</Label>
+            <Input
+              id='lookback'
+              type='number'
+              min={5}
+              max={252}
+              value={params.lookback}
+              onChange={(e) => setParams((p) => ({ ...p, lookback: Number(e.target.value) || 30 }))}
+              className='w-24 h-9'
+            />
+          </div>
+          <div className='flex items-center gap-2 pb-1'>
+            <Switch
+              id='fno'
+              checked={params.fnoOnly}
+              onCheckedChange={(v) => setParams((p) => ({ ...p, fnoOnly: v }))}
+            />
+            <Label htmlFor='fno' className='text-xs'>FnO Only</Label>
+          </div>
+          <Button onClick={handleBuild} disabled={isFetching} className='h-9'>
+            {isFetching ? (
+              <>
+                <RefreshCw size={14} className='mr-1.5 animate-spin' />
+                Building...
+              </>
+            ) : (
+              'Build Watchlist'
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className='flex-1 overflow-auto px-6 py-5 space-y-5'>
+        {!submitted && !data && (
+          <div className='flex items-center justify-center h-48 text-muted-foreground text-sm'>
+            Configure parameters and click "Build Watchlist" to start
+          </div>
+        )}
+
+        {isLoading && (
+          <div className='space-y-4'>
+            <div className='flex gap-3'>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className='h-20 w-36 bg-muted/40 rounded-lg animate-pulse' />
+              ))}
+            </div>
+            <div className='h-64 bg-muted/40 rounded-lg animate-pulse' />
+          </div>
+        )}
+
+        {data && !isLoading && (
+          <>
+            {/* Pipeline funnel */}
+            <WatchlistFunnel
+              total={data.Total}
+              rejected={data.Rejected}
+              qualified={data.Qualified.length}
+            />
+
+            {/* Charts row */}
+            <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
+              <WatchlistScoreChart stocks={data.Qualified} />
+              <Card className='p-4'>
+                <h3 className='text-sm font-medium mb-1'>Summary</h3>
+                <div className='grid grid-cols-2 gap-x-6 gap-y-2 text-sm mt-3'>
+                  <div>
+                    <span className='text-muted-foreground'>Top Score</span>
+                    <div className='font-bold tabular-nums text-emerald-400'>
+                      {data.Qualified[0]?.Composite.toFixed(1) ?? '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className='text-muted-foreground'>Median Score</span>
+                    <div className='font-bold tabular-nums'>
+                      {data.Qualified.length > 0
+                        ? data.Qualified[Math.floor(data.Qualified.length / 2)].Composite.toFixed(1)
+                        : '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className='text-muted-foreground'>Pass Rate</span>
+                    <div className='font-bold tabular-nums'>
+                      {data.Total > 0
+                        ? ((data.Qualified.length / data.Total) * 100).toFixed(1)
+                        : '0'}%
+                    </div>
+                  </div>
+                  <div>
+                    <span className='text-muted-foreground'>Lookback</span>
+                    <div className='font-bold'>{submitted?.lookback ?? params.lookback}d</div>
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            {/* Ranked table */}
+            <Card className='overflow-hidden'>
+              <div className='px-4 py-3 border-b border-border/50'>
+                <h3 className='text-sm font-medium'>
+                  Qualified Stocks
+                  <span className='ml-2 text-xs text-muted-foreground'>
+                    ({data.Qualified.length} stocks)
+                  </span>
+                </h3>
+              </div>
+              <WatchlistTable
+                stocks={data.Qualified}
+                symbolLookup={symbolMap}
+                onRowClick={handleRowClick}
+              />
+            </Card>
+          </>
+        )}
+      </div>
+
+      {/* Detail drawer */}
+      <WatchlistDetailDrawer
+        symbol={selectedSymbol}
+        lookback={submitted?.lookback ?? params.lookback}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+      />
+    </div>
+  )
+}

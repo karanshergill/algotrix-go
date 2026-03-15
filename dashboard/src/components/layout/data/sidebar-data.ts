@@ -1,6 +1,7 @@
 import {
   Activity,
   Construction,
+  Crosshair,
   Database,
   LayoutDashboard,
   Monitor,
@@ -69,6 +70,11 @@ export const sidebarData: SidebarData = {
           title: 'Industry & Sector Pulse',
           url: '/industry-and-sector-pulse',
           icon: Activity,
+        },
+        {
+          title: 'Watchlist Builder',
+          url: '/watchlist',
+          icon: Crosshair,
         },
         {
           title: 'Workflows',

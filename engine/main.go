@@ -402,9 +402,22 @@ func runWatchlist() {
 	switch subCmd {
 	case "build":
 		if jsonOutput {
+			// Include symbol lookup for qualified ISINs.
+			symMap := make(map[string]string, len(result.Qualified))
+			for _, s := range result.Qualified {
+				if sym := symbolLookup[s.ISIN]; sym != "" {
+					symMap[s.ISIN] = sym
+				}
+			}
+			out := struct {
+				Qualified []watchlist.StockScore `json:"Qualified"`
+				Rejected  int                    `json:"Rejected"`
+				Total     int                    `json:"Total"`
+				Symbols   map[string]string      `json:"Symbols"`
+			}{result.Qualified, result.Rejected, result.Total, symMap}
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
-			enc.Encode(result)
+			enc.Encode(out)
 			return
 		}
 
@@ -515,6 +528,80 @@ func runWatchlist() {
 				rank = i + 1
 				break
 			}
+		}
+
+		if jsonOutput {
+			out := map[string]interface{}{
+				"symbol":         symbolFlag,
+				"isin":           targetISIN,
+				"lookback":       lookback,
+				"coverage":       coverage,
+				"totalQualified": len(result.Qualified),
+			}
+			if found == nil {
+				out["status"] = "rejected"
+				out["rank"] = nil
+			} else {
+				out["status"] = "qualified"
+				out["rank"] = rank
+				out["raw"] = map[string]interface{}{
+					"madtv":       found.MADTV,
+					"amihud":      found.Amihud,
+					"atrPct":      found.ATRPct,
+					"parkinson":   found.Parkinson,
+					"tradeSize":   found.TradeSize,
+					"tradingDays": found.TradingDays,
+				}
+				out["percentiles"] = map[string]interface{}{
+					"pctMADTV":     found.PctMADTV,
+					"pctAmihud":    found.PctAmihud,
+					"pctATRPct":    found.PctATRPct,
+					"pctParkinson": found.PctParkinson,
+					"pctTradeSize": found.PctTradeSize,
+				}
+				out["composite"] = found.Composite
+
+				type breakdownItem struct {
+					Metric     string  `json:"metric"`
+					Percentile float64 `json:"percentile"`
+					Weight     float64 `json:"weight"`
+					Points     float64 `json:"points"`
+				}
+				out["breakdown"] = []breakdownItem{
+					{"MADTV", found.PctMADTV, cfg.WeightMADTV, found.PctMADTV * cfg.WeightMADTV},
+					{"Amihud", found.PctAmihud, cfg.WeightAmihud, found.PctAmihud * cfg.WeightAmihud},
+					{"ATR%", found.PctATRPct, cfg.WeightATRPct, found.PctATRPct * cfg.WeightATRPct},
+					{"Parkinson", found.PctParkinson, cfg.WeightParkinson, found.PctParkinson * cfg.WeightParkinson},
+					{"TradeSize", found.PctTradeSize, cfg.WeightTradeSize, found.PctTradeSize * cfg.WeightTradeSize},
+				}
+
+				type dimInfo struct {
+					name string
+					pct  float64
+				}
+				dims := []dimInfo{
+					{"MADTV (liquidity quantity)", found.PctMADTV},
+					{"Amihud (liquidity quality)", found.PctAmihud},
+					{"ATR% (total volatility)", found.PctATRPct},
+					{"Parkinson (intraday range)", found.PctParkinson},
+					{"Trade Size (institutional)", found.PctTradeSize},
+				}
+				var strengths, weaknesses []string
+				for _, d := range dims {
+					if d.pct >= 75 {
+						strengths = append(strengths, d.name)
+					}
+					if d.pct < 30 {
+						weaknesses = append(weaknesses, d.name)
+					}
+				}
+				out["strengths"] = strengths
+				out["weaknesses"] = weaknesses
+			}
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			enc.Encode(out)
+			return
 		}
 
 		fmt.Println("╔══════════════════════════════════════════════════════════════╗")

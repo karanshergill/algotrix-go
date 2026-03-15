@@ -1,5 +1,12 @@
 import { Hono } from 'hono'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import path from 'node:path'
 import pool from '../db'
+
+const execFileAsync = promisify(execFile)
+const ENGINE_DIR = path.resolve(import.meta.dirname, '..', '..', 'engine')
+const ENGINE_BIN = path.join(ENGINE_DIR, 'algotrix')
 
 const watchlist = new Hono()
 
@@ -46,6 +53,46 @@ type InsertedRow = {
   added_at: string
   expires_at: string | null
 }
+
+watchlist.get('/build-report', async (c) => {
+  const lookback = c.req.query('lookback') ?? '30'
+  const fnoOnly = c.req.query('fnoOnly') === 'true'
+
+  const args = ['watchlist', 'build', '--json', '--lookback', lookback]
+  if (fnoOnly) args.push('--fno-only')
+
+  try {
+    const { stdout } = await execFileAsync(ENGINE_BIN, args, {
+      cwd: ENGINE_DIR,
+      timeout: 30_000,
+      maxBuffer: 10 * 1024 * 1024,
+    })
+    return c.json(JSON.parse(stdout))
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Engine failed'
+    return c.json({ error: message }, 500)
+  }
+})
+
+watchlist.get('/explain', async (c) => {
+  const symbol = c.req.query('symbol')
+  if (!symbol) return c.json({ error: 'symbol query param is required' }, 400)
+
+  const lookback = c.req.query('lookback') ?? '30'
+  const args = ['watchlist', 'explain', '--symbol', symbol, '--json', '--lookback', lookback]
+
+  try {
+    const { stdout } = await execFileAsync(ENGINE_BIN, args, {
+      cwd: ENGINE_DIR,
+      timeout: 30_000,
+      maxBuffer: 10 * 1024 * 1024,
+    })
+    return c.json(JSON.parse(stdout))
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Engine failed'
+    return c.json({ error: message }, 500)
+  }
+})
 
 watchlist.get('/', async (c) => {
   const result = await pool.query<WatchlistRow>(`
