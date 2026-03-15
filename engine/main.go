@@ -8,6 +8,10 @@ import (
 	"os"
 	"strings"
 
+	"database/sql"
+	"time"
+
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/karanshergill/algotrix-go/data/nse"
 	"github.com/karanshergill/algotrix-go/db/conns"
 	"github.com/karanshergill/algotrix-go/db/ops"
@@ -35,6 +39,9 @@ func main() {
 			return
 		case "ohlcv":
 			runOHLCV()
+			return
+		case "bhavcopy":
+			runBhavcopy()
 			return
 		}
 	}
@@ -214,4 +221,86 @@ func runFeed() {
 	if err := recorder.Start(a.AccessToken()); err != nil {
 		log.Fatal("Feed error: ", err)
 	}
+}
+
+// runBhavcopy fetches NSE CM bhavcopy data and stores it in nse_cm_bhavcopy.
+// Usage: go run . bhavcopy --date 2026-03-13
+//        go run . bhavcopy --from 2026-02-01 --to 2026-03-13
+func runBhavcopy() {
+	var dateFlag, fromFlag, toFlag string
+	for i, arg := range os.Args {
+		if arg == "--date" && i+1 < len(os.Args) {
+			dateFlag = os.Args[i+1]
+		}
+		if arg == "--from" && i+1 < len(os.Args) {
+			fromFlag = os.Args[i+1]
+		}
+		if arg == "--to" && i+1 < len(os.Args) {
+			toFlag = os.Args[i+1]
+		}
+	}
+
+	// DB connection via database/sql (StoreBhavcopy uses database/sql).
+	dbCfg, err := conns.LoadDBConfig("db/conns/db.yaml")
+	if err != nil {
+		log.Fatal("Failed to load db config: ", err)
+	}
+
+	// Register pgx as database/sql driver.
+	_ = stdlib.GetDefaultDriver()
+	db, err := sql.Open("pgx", dbCfg.Postgres.DSN())
+	if err != nil {
+		log.Fatal("DB connection failed: ", err)
+	}
+	defer db.Close()
+
+	var dates []time.Time
+
+	if dateFlag != "" {
+		d, err := time.Parse("2006-01-02", dateFlag)
+		if err != nil {
+			log.Fatalf("Invalid --date: %v", err)
+		}
+		dates = append(dates, d)
+	} else if fromFlag != "" && toFlag != "" {
+		from, err := time.Parse("2006-01-02", fromFlag)
+		if err != nil {
+			log.Fatalf("Invalid --from: %v", err)
+		}
+		to, err := time.Parse("2006-01-02", toFlag)
+		if err != nil {
+			log.Fatalf("Invalid --to: %v", err)
+		}
+		for d := from; !d.After(to); d = d.AddDate(0, 0, 1) {
+			// Skip weekends.
+			if d.Weekday() == time.Saturday || d.Weekday() == time.Sunday {
+				continue
+			}
+			dates = append(dates, d)
+		}
+	} else {
+		log.Fatal("Usage: bhavcopy --date 2026-03-13  OR  bhavcopy --from 2026-02-01 --to 2026-03-13")
+	}
+
+	fmt.Printf("Fetching bhavcopy for %d date(s)...\n", len(dates))
+
+	totalInserted := int64(0)
+	for i, d := range dates {
+		rows, err := nse.FetchBhavcopy(d)
+		if err != nil {
+			fmt.Printf("[%d/%d] %s — SKIP: %v\n", i+1, len(dates), d.Format("2006-01-02"), err)
+			continue
+		}
+
+		inserted, err := nse.StoreBhavcopy(db, rows)
+		if err != nil {
+			fmt.Printf("[%d/%d] %s — ERROR storing: %v\n", i+1, len(dates), d.Format("2006-01-02"), err)
+			continue
+		}
+
+		totalInserted += inserted
+		fmt.Printf("[%d/%d] %s — %d rows fetched, %d inserted\n", i+1, len(dates), d.Format("2006-01-02"), len(rows), inserted)
+	}
+
+	fmt.Printf("\nDone. Total inserted: %d\n", totalInserted)
 }

@@ -1,4 +1,5 @@
 import {
+  Activity,
   Construction,
   Database,
   LayoutDashboard,
@@ -13,6 +14,7 @@ import {
   Palette,
   ServerOff,
   Settings,
+  Workflow,
   Wrench,
   UserCog,
   UserX,
@@ -62,6 +64,16 @@ export const sidebarData: SidebarData = {
           title: 'OHLCV Data',
           url: '/ohlcv',
           icon: Database,
+        },
+        {
+          title: 'Industry & Sector Pulse',
+          url: '/industry-and-sector-pulse',
+          icon: Activity,
+        },
+        {
+          title: 'Workflows',
+          url: '/workflows',
+          icon: Workflow,
         },
         {
           title: 'Tasks',

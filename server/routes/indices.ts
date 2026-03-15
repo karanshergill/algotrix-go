@@ -58,29 +58,32 @@ router.get('/quotes', async (c) => {
       symbol: string; ltp: number; change: number; change_pct: number
       open: number; high: number; low: number; prev_close: number
     }>(
-      `SELECT DISTINCT ON (symbol) symbol, ltp, "change", change_pct,
+      `SELECT DISTINCT ON (isin) isin AS symbol, ltp, "change", change_pct,
               open, high, low, prev_close
        FROM nse_cm_ticks
-       WHERE symbol = ANY($1)
-       ORDER BY symbol, ts DESC`,
+       WHERE isin = ANY($1)
+       ORDER BY isin, timestamp DESC`,
       [symbols]
     )
-    const quotes = result.rows.map((r) => ({
-      symbol: r.symbol,
-      ltp: r.ltp,
-      ch: r.change,
-      chp: r.change_pct,
-      open: r.open,
-      high: r.high,
-      low: r.low,
-      prevClose: r.prev_close,
-    }))
-    quotes.forEach((q) => quoteCache.set(q.symbol, q))
-    return c.json(quotes)
+    if (result.rows.length > 0) {
+      const quotes = result.rows.map((r) => ({
+        symbol: r.symbol,
+        ltp: r.ltp,
+        ch: r.change,
+        chp: r.change_pct,
+        open: r.open,
+        high: r.high,
+        low: r.low,
+        prevClose: r.prev_close,
+      }))
+      quotes.forEach((q) => quoteCache.set(q.symbol, q))
+      return c.json(quotes)
+    }
+    // DB empty — fall through to Fyers REST
   }
 
-  // --- Source: Fyers REST (market open, feed off) ---
-  if (isMarketOpen()) {
+  // --- Source: Fyers REST (market open, or feed DB empty) ---
+  if (isMarketOpen() || feedState.status === 'connected') {
     let accessToken: string
     try {
       const raw = await readFile(TOKEN_PATH, 'utf-8')

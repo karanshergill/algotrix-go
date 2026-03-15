@@ -6,7 +6,9 @@ import calendar from './routes/calendar'
 import feed from './routes/feed'
 import indices from './routes/indices'
 import ohlcv from './routes/ohlcv'
+import sectors from './routes/sectors'
 import symbols from './routes/symbols'
+import watchlist from './routes/watchlist'
 
 const app = new Hono()
 
@@ -16,7 +18,9 @@ app.route('/api/calendar', calendar)
 app.route('/api/feed', feed)
 app.route('/api/indices', indices)
 app.route('/api/ohlcv', ohlcv)
+app.route('/api/sectors', sectors)
 app.route('/api/symbols', symbols)
+app.route('/api/watchlists', watchlist)
 
 app.get('/api/health', (c) => c.json({ status: 'ok' }))
 

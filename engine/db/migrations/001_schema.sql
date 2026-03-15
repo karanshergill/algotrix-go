@@ -198,3 +198,41 @@ CREATE TABLE IF NOT EXISTS nse_cm_depth (
 );
 SELECT create_hypertable('nse_cm_depth', 'timestamp', if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS idx_nse_cm_depth_isin_timestamp ON nse_cm_depth (isin, timestamp DESC);
+
+-- ============================================================
+-- Sector Strength — Industry & Sector Pulse (Phase 1)
+-- Daily strength scores for 4 levels of sector hierarchy.
+-- Levels: 'macro' | 'sector' | 'industry' | 'sub_industry'
+-- Phase 2+ columns (pct_above_*, pct_rsi_*, avg_vol_ratio) are
+-- nullable and populated when indicator compute is added.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS sector_strength (
+  date              DATE    NOT NULL,
+  level             TEXT    NOT NULL,
+  group_name        TEXT    NOT NULL,
+  stock_count       INTEGER NOT NULL,
+  score             NUMERIC,
+  score_1w_chg      NUMERIC,
+  score_1m_chg      NUMERIC,
+  ret_1d            NUMERIC,
+  ret_1w            NUMERIC,
+  ret_1m            NUMERIC,
+  ret_3m            NUMERIC,
+  ret_6m            NUMERIC,
+  ret_1y            NUMERIC,
+  adv_count         INTEGER,
+  dec_count         INTEGER,
+  unch_count        INTEGER,
+  pct_above_20d     NUMERIC,
+  pct_above_50d     NUMERIC,
+  pct_above_200d    NUMERIC,
+  pct_near_52w_high NUMERIC,
+  pct_rsi_bull      NUMERIC,
+  pct_rsi_bear      NUMERIC,
+  avg_vol_ratio     NUMERIC,
+  PRIMARY KEY (date, level, group_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sector_strength_date ON sector_strength (date DESC);
+CREATE INDEX IF NOT EXISTS idx_sector_strength_level_date ON sector_strength (level, date DESC);
