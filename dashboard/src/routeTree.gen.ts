@@ -225,7 +225,6 @@ const AuthenticatedErrorsErrorRoute =
   } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof AuthenticatedIndexRoute
   '/clerk': typeof ClerkAuthenticatedRouteRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
@@ -238,6 +237,7 @@ export interface FileRoutesByFullPath {
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
+  '/': typeof AuthenticatedIndexRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
@@ -246,16 +246,16 @@ export interface FileRoutesByFullPath {
   '/clerk/sign-in': typeof ClerkauthSignInRoute
   '/clerk/sign-up': typeof ClerkauthSignUpRoute
   '/clerk/user-management': typeof ClerkAuthenticatedUserManagementRoute
-  '/apps/': typeof AuthenticatedAppsIndexRoute
-  '/chats/': typeof AuthenticatedChatsIndexRoute
-  '/help-center/': typeof AuthenticatedHelpCenterIndexRoute
-  '/industry-and-sector-pulse/': typeof AuthenticatedIndustryAndSectorPulseIndexRoute
-  '/ohlcv/': typeof AuthenticatedOhlcvIndexRoute
+  '/apps': typeof AuthenticatedAppsIndexRoute
+  '/chats': typeof AuthenticatedChatsIndexRoute
+  '/help-center': typeof AuthenticatedHelpCenterIndexRoute
+  '/industry-and-sector-pulse': typeof AuthenticatedIndustryAndSectorPulseIndexRoute
+  '/ohlcv': typeof AuthenticatedOhlcvIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
-  '/tasks/': typeof AuthenticatedTasksIndexRoute
-  '/users/': typeof AuthenticatedUsersIndexRoute
-  '/watchlist/': typeof AuthenticatedWatchlistIndexRoute
-  '/workflows/': typeof AuthenticatedWorkflowsIndexRoute
+  '/tasks': typeof AuthenticatedTasksIndexRoute
+  '/users': typeof AuthenticatedUsersIndexRoute
+  '/watchlist': typeof AuthenticatedWatchlistIndexRoute
+  '/workflows': typeof AuthenticatedWorkflowsIndexRoute
 }
 export interface FileRoutesByTo {
   '/clerk': typeof ClerkAuthenticatedRouteRouteWithChildren
@@ -329,7 +329,6 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | '/'
     | '/clerk'
     | '/settings'
     | '/forgot-password'
@@ -342,6 +341,7 @@ export interface FileRouteTypes {
     | '/404'
     | '/500'
     | '/503'
+    | '/'
     | '/errors/$error'
     | '/settings/account'
     | '/settings/appearance'
@@ -350,16 +350,16 @@ export interface FileRouteTypes {
     | '/clerk/sign-in'
     | '/clerk/sign-up'
     | '/clerk/user-management'
-    | '/apps/'
-    | '/chats/'
-    | '/help-center/'
-    | '/industry-and-sector-pulse/'
-    | '/ohlcv/'
+    | '/apps'
+    | '/chats'
+    | '/help-center'
+    | '/industry-and-sector-pulse'
+    | '/ohlcv'
     | '/settings/'
-    | '/tasks/'
-    | '/users/'
-    | '/watchlist/'
-    | '/workflows/'
+    | '/tasks'
+    | '/users'
+    | '/watchlist'
+    | '/workflows'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/clerk'
@@ -457,7 +457,7 @@ declare module '@tanstack/react-router' {
     '/_authenticated': {
       id: '/_authenticated'
       path: ''
-      fullPath: '/'
+      fullPath: ''
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
@@ -562,28 +562,28 @@ declare module '@tanstack/react-router' {
     '/_authenticated/workflows/': {
       id: '/_authenticated/workflows/'
       path: '/workflows'
-      fullPath: '/workflows/'
+      fullPath: '/workflows'
       preLoaderRoute: typeof AuthenticatedWorkflowsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/watchlist/': {
       id: '/_authenticated/watchlist/'
       path: '/watchlist'
-      fullPath: '/watchlist/'
+      fullPath: '/watchlist'
       preLoaderRoute: typeof AuthenticatedWatchlistIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/users/': {
       id: '/_authenticated/users/'
       path: '/users'
-      fullPath: '/users/'
+      fullPath: '/users'
       preLoaderRoute: typeof AuthenticatedUsersIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/tasks/': {
       id: '/_authenticated/tasks/'
       path: '/tasks'
-      fullPath: '/tasks/'
+      fullPath: '/tasks'
       preLoaderRoute: typeof AuthenticatedTasksIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
@@ -597,35 +597,35 @@ declare module '@tanstack/react-router' {
     '/_authenticated/ohlcv/': {
       id: '/_authenticated/ohlcv/'
       path: '/ohlcv'
-      fullPath: '/ohlcv/'
+      fullPath: '/ohlcv'
       preLoaderRoute: typeof AuthenticatedOhlcvIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/industry-and-sector-pulse/': {
       id: '/_authenticated/industry-and-sector-pulse/'
       path: '/industry-and-sector-pulse'
-      fullPath: '/industry-and-sector-pulse/'
+      fullPath: '/industry-and-sector-pulse'
       preLoaderRoute: typeof AuthenticatedIndustryAndSectorPulseIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/help-center/': {
       id: '/_authenticated/help-center/'
       path: '/help-center'
-      fullPath: '/help-center/'
+      fullPath: '/help-center'
       preLoaderRoute: typeof AuthenticatedHelpCenterIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/chats/': {
       id: '/_authenticated/chats/'
       path: '/chats'
-      fullPath: '/chats/'
+      fullPath: '/chats'
       preLoaderRoute: typeof AuthenticatedChatsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/apps/': {
       id: '/_authenticated/apps/'
       path: '/apps'
-      fullPath: '/apps/'
+      fullPath: '/apps'
       preLoaderRoute: typeof AuthenticatedAppsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }

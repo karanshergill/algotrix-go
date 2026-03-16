@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Crosshair, RefreshCw, SlidersHorizontal } from 'lucide-react'
+import { Crosshair, RefreshCw } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -12,11 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
 import { HeaderToolbar } from '@/components/layout/header-toolbar'
 import { useWatchlistBuild } from './use-watchlist-build'
 import { WatchlistFunnel } from './watchlist-funnel'
@@ -28,7 +23,6 @@ import { DEFAULT_WEIGHTS, type BuildParams } from './types'
 
 export function WatchlistBuilderPage() {
   const [params, setParams] = useState<BuildParams>({ lookback: 30, fnoOnly: false, madtvFloor: 1e9, weights: { ...DEFAULT_WEIGHTS } })
-  const [weightsOpen, setWeightsOpen] = useState(false)
   const [submitted, setSubmitted] = useState<BuildParams | null>(null)
   const [selectedSymbol, setSelectedSymbol] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -134,23 +128,13 @@ export function WatchlistBuilderPage() {
           </Button>
         </div>
 
-        {/* Weight sliders (collapsible) */}
-        <Collapsible open={weightsOpen} onOpenChange={setWeightsOpen}>
-          <CollapsibleTrigger asChild>
-            <Button variant='ghost' size='sm' className='mt-3 h-7 text-xs gap-1.5 text-muted-foreground'>
-              <SlidersHorizontal size={12} />
-              {weightsOpen ? 'Hide' : 'Show'} Scoring Weights
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className='mt-3'>
-            <Card className='p-4 max-w-lg'>
-              <WatchlistWeightSliders
-                weights={params.weights}
-                onChange={(w) => setParams((p) => ({ ...p, weights: w }))}
-              />
-            </Card>
-          </CollapsibleContent>
-        </Collapsible>
+        {/* Scoring weights — always visible */}
+        <Card className='p-4 max-w-lg mt-3'>
+          <WatchlistWeightSliders
+            weights={params.weights}
+            onChange={(w) => setParams((p) => ({ ...p, weights: w }))}
+          />
+        </Card>
       </div>
 
       {/* Content */}

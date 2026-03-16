@@ -117,7 +117,8 @@ function SliderRow({
         onValueChange={([v]) => onChange(v)}
         className='flex-1'
       />
-      <span className='text-xs tabular-nums text-muted-foreground w-8 text-right'>{normalizedPct}</span>
+      <span className='text-xs tabular-nums w-6 text-right font-medium'>{value}</span>
+      <span className='text-[10px] tabular-nums text-muted-foreground w-10 text-right'>→ {normalizedPct}</span>
     </div>
   )
 }
