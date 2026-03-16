@@ -22,11 +22,16 @@ type BuildConfig struct {
 	MADTVFloor float64 // minimum MADTV in rupees to qualify (default 1e9 = ₹100Cr)
 
 	// Scoring weights (must sum to 1.0).
-	WeightMADTV     float64 // default 0.20
-	WeightAmihud    float64 // default 0.20
-	WeightATRPct    float64 // default 0.20
-	WeightParkinson float64 // default 0.15
-	WeightTradeSize float64 // default 0.25
+	// Tradability layer (40%).
+	WeightMADTV     float64 // default 0.10
+	WeightAmihud    float64 // default 0.10
+	WeightTradeSize float64 // default 0.10
+	WeightATRPct    float64 // default 0.10
+	// Opportunity layer (60%).
+	WeightADRPct        float64 // default 0.15
+	WeightRangeEff      float64 // default 0.15
+	WeightParkinson     float64 // default 0.10
+	WeightMomentum      float64 // default 0.10
 
 	// Optional composite score floor (0 = no floor).
 	MinCompositeScore float64
@@ -38,15 +43,20 @@ type BuildConfig struct {
 // DefaultConfig returns the default build configuration.
 func DefaultConfig() BuildConfig {
 	return BuildConfig{
-		LookbackDays:      30,
-		MinCoverage:       1.0,
-		WilderPeriod:      14,
-		MADTVFloor:        1e9, // ₹100 Crore
-		WeightMADTV:       0.20,
-		WeightAmihud:      0.20,
-		WeightATRPct:      0.20,
-		WeightParkinson:   0.15,
-		WeightTradeSize:   0.25,
+		LookbackDays: 30,
+		MinCoverage:  1.0,
+		WilderPeriod: 14,
+		MADTVFloor:   1e9, // ₹100 Crore
+		// Tradability layer (40%).
+		WeightMADTV:     0.10,
+		WeightAmihud:    0.10,
+		WeightTradeSize: 0.10,
+		WeightATRPct:    0.10,
+		// Opportunity layer (60%).
+		WeightADRPct:      0.15,
+		WeightRangeEff:    0.15,
+		WeightParkinson:   0.10,
+		WeightMomentum:    0.10,
 		MinCompositeScore: 0,
 	}
 }
@@ -61,6 +71,9 @@ type StockScore struct {
 	ATRPct      float64
 	Parkinson   float64
 	TradeSize   float64
+	ADRPct      float64
+	RangeEff    float64
+	Momentum5D  float64
 	TradingDays int
 
 	// Percentile scores (0-100).
@@ -69,6 +82,9 @@ type StockScore struct {
 	PctATRPct    float64
 	PctParkinson float64
 	PctTradeSize float64
+	PctADRPct    float64
+	PctRangeEff  float64
+	PctMomentum  float64
 
 	// Weighted composite score (0-100).
 	Composite float64
@@ -115,6 +131,24 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 		return nil, fmt.Errorf("computing Trade Size: %w", err)
 	}
 
+	log.Println("Computing ADR...")
+	adrResults, err := metrics.ComputeADR(db, cfg.LookbackDays, cfg.MinCoverage)
+	if err != nil {
+		return nil, fmt.Errorf("computing ADR: %w", err)
+	}
+
+	log.Println("Computing Range Efficiency...")
+	reResults, err := metrics.ComputeRangeEfficiency(db, cfg.LookbackDays, cfg.MinCoverage)
+	if err != nil {
+		return nil, fmt.Errorf("computing Range Efficiency: %w", err)
+	}
+
+	log.Println("Computing Momentum...")
+	momResults, err := metrics.ComputeMomentum(db, cfg.LookbackDays, cfg.MinCoverage)
+	if err != nil {
+		return nil, fmt.Errorf("computing Momentum: %w", err)
+	}
+
 	// Index metrics by ISIN for fast lookup.
 	adtvMap := make(map[string]*metrics.ADTVResult)
 	for i := range adtvResults {
@@ -136,21 +170,36 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 	for i := range tradeSizeResults {
 		tradeSizeMap[tradeSizeResults[i].ISIN] = &tradeSizeResults[i]
 	}
+	adrMap := make(map[string]*metrics.ADRResult)
+	for i := range adrResults {
+		adrMap[adrResults[i].ISIN] = &adrResults[i]
+	}
+	reMap := make(map[string]*metrics.RangeEfficiencyResult)
+	for i := range reResults {
+		reMap[reResults[i].ISIN] = &reResults[i]
+	}
+	momMap := make(map[string]*metrics.MomentumResult)
+	for i := range momResults {
+		momMap[momResults[i].ISIN] = &momResults[i]
+	}
 
-	// Collect all ISINs that have all 5 metrics.
+	// Collect all ISINs that have ADTV (base metric).
 	allISINs := make(map[string]bool)
 	for isin := range adtvMap {
 		allISINs[isin] = true
 	}
 
 	type candidate struct {
-		isin      string
-		madtv     float64
-		amihud    float64
-		atrPct    float64
-		parkinson float64
-		tradeSize float64
-		days      int
+		isin       string
+		madtv      float64
+		amihud     float64
+		atrPct     float64
+		parkinson  float64
+		tradeSize  float64
+		adrPct     float64
+		rangeEff   float64
+		momentum5d float64
+		days       int
 	}
 
 	var candidates []candidate
@@ -171,13 +220,16 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 			continue
 		}
 
-		// All 5 metrics must exist.
+		// All 8 metrics must exist.
 		adtv, ok1 := adtvMap[isin]
 		atr, ok2 := atrMap[isin]
 		amihud, ok3 := amihudMap[isin]
 		park, ok4 := parkinsonMap[isin]
 		ts, ok5 := tradeSizeMap[isin]
-		if !ok1 || !ok2 || !ok3 || !ok4 || !ok5 {
+		adr, ok6 := adrMap[isin]
+		re, ok7 := reMap[isin]
+		mom, ok8 := momMap[isin]
+		if !ok1 || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 {
 			rejected++
 			continue
 		}
@@ -187,13 +239,16 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 		// This keeps scores stable regardless of the floor setting.
 
 		candidates = append(candidates, candidate{
-			isin:      isin,
-			madtv:     adtv.MADTV,
-			amihud:    amihud.Amihud,
-			atrPct:    atr.ATRPct,
-			parkinson: park.ParkinsonDaily,
-			tradeSize: ts.AvgTradeSize,
-			days:      adtv.TradingDays,
+			isin:       isin,
+			madtv:      adtv.MADTV,
+			amihud:     amihud.Amihud,
+			atrPct:     atr.ATRPct,
+			parkinson:  park.ParkinsonDaily,
+			tradeSize:  ts.AvgTradeSize,
+			adrPct:     adr.ADRPct,
+			rangeEff:   re.AvgRangeEfficiency,
+			momentum5d: mom.Return5D,
+			days:       adtv.TradingDays,
 		})
 	}
 
@@ -210,19 +265,29 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 	atrPctVals := make([]float64, n)
 	parkVals := make([]float64, n)
 	tsVals := make([]float64, n)
+	adrPctVals := make([]float64, n)
+	reVals := make([]float64, n)
+	momVals := make([]float64, n)
 	for i, c := range candidates {
 		madtvVals[i] = c.madtv
 		amihudVals[i] = c.amihud
 		atrPctVals[i] = c.atrPct
 		parkVals[i] = c.parkinson
 		tsVals[i] = c.tradeSize
+		adrPctVals[i] = c.adrPct
+		reVals[i] = c.rangeEff
+		// Momentum uses absolute value — strong movers in either direction score high.
+		momVals[i] = math.Abs(c.momentum5d)
 	}
 
-	pctMADTV := percentileRank(madtvVals, false)     // higher = better
-	pctAmihud := percentileRank(amihudVals, true)     // lower raw = better → invert
-	pctATRPct := percentileRank(atrPctVals, false)    // higher = better
-	pctParkinson := percentileRank(parkVals, false)    // higher = better
-	pctTradeSize := percentileRank(tsVals, false)      // higher = better
+	pctMADTV := percentileRank(madtvVals, false)      // higher = better
+	pctAmihud := percentileRank(amihudVals, true)      // lower raw = better → invert
+	pctATRPct := percentileRank(atrPctVals, false)     // higher = better
+	pctParkinson := percentileRank(parkVals, false)     // higher = better
+	pctTradeSize := percentileRank(tsVals, false)       // higher = better
+	pctADRPct := percentileRank(adrPctVals, false)      // higher = better
+	pctRangeEff := percentileRank(reVals, false)        // higher = better
+	pctMomentum := percentileRank(momVals, false)       // higher abs = better
 
 	// Build scored results.
 	var scored []StockScore
@@ -231,7 +296,10 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 			cfg.WeightAmihud*pctAmihud[i] +
 			cfg.WeightATRPct*pctATRPct[i] +
 			cfg.WeightParkinson*pctParkinson[i] +
-			cfg.WeightTradeSize*pctTradeSize[i]
+			cfg.WeightTradeSize*pctTradeSize[i] +
+			cfg.WeightADRPct*pctADRPct[i] +
+			cfg.WeightRangeEff*pctRangeEff[i] +
+			cfg.WeightMomentum*pctMomentum[i]
 
 		// Optional composite score floor.
 		if cfg.MinCompositeScore > 0 && composite < cfg.MinCompositeScore {
@@ -253,12 +321,18 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 			ATRPct:       c.atrPct,
 			Parkinson:    c.parkinson,
 			TradeSize:    c.tradeSize,
+			ADRPct:       c.adrPct,
+			RangeEff:     c.rangeEff,
+			Momentum5D:   c.momentum5d,
 			TradingDays:  c.days,
 			PctMADTV:     pctMADTV[i],
 			PctAmihud:    pctAmihud[i],
 			PctATRPct:    pctATRPct[i],
 			PctParkinson: pctParkinson[i],
 			PctTradeSize: pctTradeSize[i],
+			PctADRPct:    pctADRPct[i],
+			PctRangeEff:  pctRangeEff[i],
+			PctMomentum:  pctMomentum[i],
 			Composite:    composite,
 		})
 	}

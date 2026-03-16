@@ -438,24 +438,25 @@ func runWatchlist() {
 		fmt.Printf("    Rejected:         %d\n", result.Rejected)
 		fmt.Printf("    Qualified:        %d\n", len(result.Qualified))
 		fmt.Println()
-		fmt.Printf("  WEIGHTS: MADTV=%.0f%% | Amihud=%.0f%% | ATR%%=%.0f%% | Parkinson=%.0f%% | TradeSize=%.0f%%\n",
+		fmt.Printf("  WEIGHTS: MADTV=%.0f%% | Amihud=%.0f%% | ATR%%=%.0f%% | Parkinson=%.0f%% | TradeSize=%.0f%% | ADR%%=%.0f%% | RangeEff=%.0f%% | Momentum=%.0f%%\n",
 			cfg.WeightMADTV*100, cfg.WeightAmihud*100, cfg.WeightATRPct*100,
-			cfg.WeightParkinson*100, cfg.WeightTradeSize*100)
+			cfg.WeightParkinson*100, cfg.WeightTradeSize*100,
+			cfg.WeightADRPct*100, cfg.WeightRangeEff*100, cfg.WeightMomentum*100)
 		fmt.Println()
 
 		// Ranked table.
 		fmt.Println("  QUALIFIED STOCKS (ranked by composite score):")
 		fmt.Println("  ─────────────────────────────────────────────────────────────────────────────────────")
-		fmt.Printf("  %-4s %-12s %-15s %8s %8s %8s %8s %8s %7s\n",
-			"#", "SYMBOL", "ISIN", "MADTV%", "Amihud%", "ATR%P", "Park%", "TrdSz%", "SCORE")
-		fmt.Println("  ─────────────────────────────────────────────────────────────────────────────────────")
+		fmt.Printf("  %-4s %-12s %-15s %7s %7s %7s %7s %7s %7s %7s %7s %7s\n",
+			"#", "SYMBOL", "ISIN", "MADTV%", "Amhd%", "ATR%P", "Park%", "TrdSz%", "ADR%P", "RngEf%", "Mom%", "SCORE")
+		fmt.Println("  " + strings.Repeat("─", 120))
 
 		for i, s := range result.Qualified {
 			sym := symbolLookup[s.ISIN]
 			if sym == "" { sym = "???" }
-			fmt.Printf("  %-4d %-12s %-15s %7.1f %7.1f %7.1f %7.1f %7.1f %6.1f\n",
+			fmt.Printf("  %-4d %-12s %-15s %6.1f %6.1f %6.1f %6.1f %6.1f %6.1f %6.1f %6.1f %6.1f\n",
 				i+1, sym, s.ISIN, s.PctMADTV, s.PctAmihud, s.PctATRPct,
-				s.PctParkinson, s.PctTradeSize, s.Composite)
+				s.PctParkinson, s.PctTradeSize, s.PctADRPct, s.PctRangeEff, s.PctMomentum, s.Composite)
 		}
 
 		// Score distribution.
@@ -484,18 +485,23 @@ func runWatchlist() {
 			defer f.Close()
 			w := csv.NewWriter(f)
 			w.Write([]string{"Rank", "Symbol", "ISIN", "MADTV_Raw", "Amihud_Raw", "ATRPct_Raw",
-				"Parkinson_Raw", "TradeSize_Raw", "Days",
-				"Pct_MADTV", "Pct_Amihud", "Pct_ATRPct", "Pct_Parkinson", "Pct_TradeSize", "Composite"})
+				"Parkinson_Raw", "TradeSize_Raw", "ADRPct_Raw", "RangeEff_Raw", "Momentum5D_Raw", "Days",
+				"Pct_MADTV", "Pct_Amihud", "Pct_ATRPct", "Pct_Parkinson", "Pct_TradeSize",
+				"Pct_ADRPct", "Pct_RangeEff", "Pct_Momentum", "Composite"})
 			for i, s := range result.Qualified {
 				sym := symbolLookup[s.ISIN]
 				w.Write([]string{
 					strconv.Itoa(i + 1), sym, s.ISIN,
 					fmt.Sprintf("%.2f", s.MADTV), fmt.Sprintf("%.2e", s.Amihud),
 					fmt.Sprintf("%.2f", s.ATRPct), fmt.Sprintf("%.4f", s.Parkinson),
-					fmt.Sprintf("%.2f", s.TradeSize), strconv.Itoa(s.TradingDays),
+					fmt.Sprintf("%.2f", s.TradeSize), fmt.Sprintf("%.2f", s.ADRPct),
+					fmt.Sprintf("%.3f", s.RangeEff), fmt.Sprintf("%.4f", s.Momentum5D),
+					strconv.Itoa(s.TradingDays),
 					fmt.Sprintf("%.1f", s.PctMADTV), fmt.Sprintf("%.1f", s.PctAmihud),
 					fmt.Sprintf("%.1f", s.PctATRPct), fmt.Sprintf("%.1f", s.PctParkinson),
-					fmt.Sprintf("%.1f", s.PctTradeSize), fmt.Sprintf("%.1f", s.Composite),
+					fmt.Sprintf("%.1f", s.PctTradeSize), fmt.Sprintf("%.1f", s.PctADRPct),
+					fmt.Sprintf("%.1f", s.PctRangeEff), fmt.Sprintf("%.1f", s.PctMomentum),
+					fmt.Sprintf("%.1f", s.Composite),
 				})
 			}
 			w.Flush()
@@ -550,6 +556,9 @@ func runWatchlist() {
 					"atrPct":      found.ATRPct,
 					"parkinson":   found.Parkinson,
 					"tradeSize":   found.TradeSize,
+					"adrPct":      found.ADRPct,
+					"rangeEff":    found.RangeEff,
+					"momentum5d":  found.Momentum5D,
 					"tradingDays": found.TradingDays,
 				}
 				out["percentiles"] = map[string]interface{}{
@@ -558,6 +567,9 @@ func runWatchlist() {
 					"pctATRPct":    found.PctATRPct,
 					"pctParkinson": found.PctParkinson,
 					"pctTradeSize": found.PctTradeSize,
+					"pctADRPct":    found.PctADRPct,
+					"pctRangeEff":  found.PctRangeEff,
+					"pctMomentum":  found.PctMomentum,
 				}
 				out["composite"] = found.Composite
 
@@ -573,6 +585,9 @@ func runWatchlist() {
 					{"ATR%", found.PctATRPct, cfg.WeightATRPct, found.PctATRPct * cfg.WeightATRPct},
 					{"Parkinson", found.PctParkinson, cfg.WeightParkinson, found.PctParkinson * cfg.WeightParkinson},
 					{"TradeSize", found.PctTradeSize, cfg.WeightTradeSize, found.PctTradeSize * cfg.WeightTradeSize},
+					{"ADR%", found.PctADRPct, cfg.WeightADRPct, found.PctADRPct * cfg.WeightADRPct},
+					{"RangeEff", found.PctRangeEff, cfg.WeightRangeEff, found.PctRangeEff * cfg.WeightRangeEff},
+					{"Momentum", found.PctMomentum, cfg.WeightMomentum, found.PctMomentum * cfg.WeightMomentum},
 				}
 
 				type dimInfo struct {
@@ -585,6 +600,9 @@ func runWatchlist() {
 					{"ATR% (total volatility)", found.PctATRPct},
 					{"Parkinson (intraday range)", found.PctParkinson},
 					{"Trade Size (institutional)", found.PctTradeSize},
+					{"ADR% (daily range)", found.PctADRPct},
+					{"Range Efficiency (capturability)", found.PctRangeEff},
+					{"Momentum (5D trend)", found.PctMomentum},
 				}
 				var strengths, weaknesses []string
 				for _, d := range dims {
@@ -635,6 +653,9 @@ func runWatchlist() {
 		fmt.Printf("    ATR%%:           %.2f%%\n", found.ATRPct)
 		fmt.Printf("    Parkinson:      %.2f%% daily\n", found.Parkinson*100)
 		fmt.Printf("    Avg Trade Size: ₹%.0f\n", found.TradeSize)
+		fmt.Printf("    ADR%%:           %.2f%%\n", found.ADRPct)
+		fmt.Printf("    Range Eff:      %.3f\n", found.RangeEff)
+		fmt.Printf("    Momentum 5D:    %.2f%%\n", found.Momentum5D*100)
 		fmt.Printf("    Trading Days:   %d\n", found.TradingDays)
 		fmt.Println()
 
@@ -653,22 +674,29 @@ func runWatchlist() {
 		printBar("ATR%", found.PctATRPct, "")
 		printBar("Parkinson", found.PctParkinson, "")
 		printBar("Trade Size", found.PctTradeSize, "")
+		printBar("ADR%", found.PctADRPct, "")
+		printBar("Range Eff", found.PctRangeEff, "")
+		printBar("Momentum", found.PctMomentum, "(abs 5D)")
 		fmt.Println()
 
 		// Composite score breakdown.
 		fmt.Println("  COMPOSITE SCORE BREAKDOWN:")
-		madtvPts := found.PctMADTV * cfg.WeightMADTV
-		amihudPts := found.PctAmihud * cfg.WeightAmihud
-		atrPts := found.PctATRPct * cfg.WeightATRPct
-		parkPts := found.PctParkinson * cfg.WeightParkinson
-		tsPts := found.PctTradeSize * cfg.WeightTradeSize
-		fmt.Printf("    MADTV:      %5.1f × %.2f = %5.1f pts\n", found.PctMADTV, cfg.WeightMADTV, madtvPts)
-		fmt.Printf("    Amihud:     %5.1f × %.2f = %5.1f pts\n", found.PctAmihud, cfg.WeightAmihud, amihudPts)
-		fmt.Printf("    ATR%%:       %5.1f × %.2f = %5.1f pts\n", found.PctATRPct, cfg.WeightATRPct, atrPts)
-		fmt.Printf("    Parkinson:  %5.1f × %.2f = %5.1f pts\n", found.PctParkinson, cfg.WeightParkinson, parkPts)
-		fmt.Printf("    Trade Size: %5.1f × %.2f = %5.1f pts\n", found.PctTradeSize, cfg.WeightTradeSize, tsPts)
-		fmt.Println("    ─────────────────────────────")
-		fmt.Printf("    TOTAL:                  %5.1f / 100\n", found.Composite)
+		type scoreLine struct{ label string; pct, weight float64 }
+		scoreLines := []scoreLine{
+			{"MADTV", found.PctMADTV, cfg.WeightMADTV},
+			{"Amihud", found.PctAmihud, cfg.WeightAmihud},
+			{"ATR%", found.PctATRPct, cfg.WeightATRPct},
+			{"Parkinson", found.PctParkinson, cfg.WeightParkinson},
+			{"Trade Size", found.PctTradeSize, cfg.WeightTradeSize},
+			{"ADR%", found.PctADRPct, cfg.WeightADRPct},
+			{"Range Eff", found.PctRangeEff, cfg.WeightRangeEff},
+			{"Momentum", found.PctMomentum, cfg.WeightMomentum},
+		}
+		for _, sl := range scoreLines {
+			fmt.Printf("    %-12s %5.1f × %.2f = %5.1f pts\n", sl.label+":", sl.pct, sl.weight, sl.pct*sl.weight)
+		}
+		fmt.Println("    ─────────────────────────────────")
+		fmt.Printf("    TOTAL:                    %5.1f / 100\n", found.Composite)
 		fmt.Println()
 
 		// Strength/weakness summary.
@@ -677,6 +705,9 @@ func runWatchlist() {
 			{"MADTV (liquidity quantity)", found.PctMADTV},
 			{"Amihud (liquidity quality)", found.PctAmihud},
 			{"ATR% (total volatility)", found.PctATRPct},
+			{"ADR% (daily range)", found.PctADRPct},
+			{"Range Eff (capturability)", found.PctRangeEff},
+			{"Momentum (5D trend)", found.PctMomentum},
 			{"Parkinson (intraday range)", found.PctParkinson},
 			{"Trade Size (institutional)", found.PctTradeSize},
 		}
