@@ -83,21 +83,29 @@ export function WatchlistBuilderPage() {
             </Select>
           </div>
           <div className='space-y-1'>
-            <Label className='text-xs'>MADTV Floor</Label>
-            <Select
-              value={String(params.madtvFloor)}
-              onValueChange={(v) => setParams((p) => ({ ...p, madtvFloor: Number(v) }))}
-            >
-              <SelectTrigger className='w-28 h-9'>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value='100000000'>₹10 Cr</SelectItem>
-                <SelectItem value='250000000'>₹25 Cr</SelectItem>
-                <SelectItem value='500000000'>₹50 Cr</SelectItem>
-                <SelectItem value='1000000000'>₹100 Cr</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label className='text-xs'>MADTV Floor (₹ Cr)</Label>
+            <div className='flex items-center gap-1'>
+              <Button
+                variant='outline'
+                size='icon'
+                className='h-9 w-9 shrink-0'
+                disabled={params.madtvFloor <= 0}
+                onClick={() => setParams((p) => ({ ...p, madtvFloor: Math.max(0, p.madtvFloor - 5e7) }))}
+              >
+                <span className='text-base'>−</span>
+              </Button>
+              <div className='w-20 h-9 flex items-center justify-center rounded-md border border-input bg-background text-sm tabular-nums'>
+                {params.madtvFloor / 1e7}
+              </div>
+              <Button
+                variant='outline'
+                size='icon'
+                className='h-9 w-9 shrink-0'
+                onClick={() => setParams((p) => ({ ...p, madtvFloor: p.madtvFloor + 5e7 }))}
+              >
+                <span className='text-base'>+</span>
+              </Button>
+            </div>
           </div>
           <div className='flex items-center gap-2 pb-1'>
             <Switch
