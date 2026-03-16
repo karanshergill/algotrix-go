@@ -473,11 +473,12 @@ func runWatchlist() {
 				}
 			}
 			out := struct {
-				Qualified []watchlist.StockScore `json:"Qualified"`
-				Rejected  int                    `json:"Rejected"`
-				Total     int                    `json:"Total"`
-				Symbols   map[string]string      `json:"Symbols"`
-			}{result.Qualified, result.Rejected, result.Total, symMap}
+				Qualified []watchlist.StockScore            `json:"Qualified"`
+				Rejected  int                               `json:"Rejected"`
+				Total     int                               `json:"Total"`
+				Symbols   map[string]string                 `json:"Symbols"`
+				Stats     map[string]watchlist.MetricStats  `json:"Stats"`
+			}{result.Qualified, result.Rejected, result.Total, symMap, result.Stats}
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
 			enc.Encode(out)

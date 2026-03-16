@@ -90,11 +90,21 @@ type StockScore struct {
 	Composite float64
 }
 
+// MetricStats holds distribution statistics for a single metric across the qualified pool.
+type MetricStats struct {
+	Min    float64 `json:"min"`
+	P25    float64 `json:"p25"`
+	Median float64 `json:"median"`
+	P75    float64 `json:"p75"`
+	Max    float64 `json:"max"`
+}
+
 // BuildResult holds the output of a watchlist build.
 type BuildResult struct {
-	Qualified []StockScore // stocks that passed all gates, ranked by composite score
-	Rejected  int          // count of stocks rejected by hard gates
-	Total     int          // total stocks evaluated
+	Qualified []StockScore           // stocks that passed all gates, ranked by composite score
+	Rejected  int                    // count of stocks rejected by hard gates
+	Total     int                    // total stocks evaluated
+	Stats     map[string]MetricStats // per-metric distribution stats across qualified pool
 }
 
 // Build constructs a watchlist by computing metrics, applying hard gates,
@@ -345,11 +355,73 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 	log.Printf("Watchlist built: %d qualified out of %d evaluated (%d rejected)",
 		len(scored), total, rejected)
 
+	// Compute distribution stats across qualified pool.
+	stats := computeMetricStats(scored)
+
 	return &BuildResult{
 		Qualified: scored,
 		Rejected:  rejected,
 		Total:     total,
+		Stats:     stats,
 	}, nil
+}
+
+// computeMetricStats computes min/p25/median/p75/max for each raw metric
+// across the qualified stocks. Percentiles use nearest-rank interpolation.
+func computeMetricStats(stocks []StockScore) map[string]MetricStats {
+	if len(stocks) == 0 {
+		return nil
+	}
+
+	extractors := map[string]func(s StockScore) float64{
+		"madtv":     func(s StockScore) float64 { return s.MADTV },
+		"amihud":    func(s StockScore) float64 { return s.Amihud },
+		"atrPct":    func(s StockScore) float64 { return s.ATRPct },
+		"parkinson": func(s StockScore) float64 { return s.Parkinson },
+		"tradeSize": func(s StockScore) float64 { return s.TradeSize },
+		"adrPct":    func(s StockScore) float64 { return s.ADRPct },
+		"rangeEff":  func(s StockScore) float64 { return s.RangeEff },
+		"momentum":  func(s StockScore) float64 { return math.Abs(s.Momentum5D) },
+	}
+
+	result := make(map[string]MetricStats, len(extractors))
+	for name, extract := range extractors {
+		vals := make([]float64, len(stocks))
+		for i, s := range stocks {
+			vals[i] = extract(s)
+		}
+		sort.Float64s(vals)
+		n := len(vals)
+		result[name] = MetricStats{
+			Min:    vals[0],
+			P25:    percentileValue(vals, 25),
+			Median: percentileValue(vals, 50),
+			P75:    percentileValue(vals, 75),
+			Max:    vals[n-1],
+		}
+	}
+	return result
+}
+
+// percentileValue returns the value at the given percentile (0-100) using
+// linear interpolation between nearest ranks.
+func percentileValue(sorted []float64, pct float64) float64 {
+	n := len(sorted)
+	if n == 0 {
+		return 0
+	}
+	if n == 1 {
+		return sorted[0]
+	}
+	// Rank position (0-indexed, fractional).
+	pos := (pct / 100) * float64(n-1)
+	lo := int(math.Floor(pos))
+	hi := int(math.Ceil(pos))
+	if lo == hi || hi >= n {
+		return sorted[lo]
+	}
+	frac := pos - float64(lo)
+	return sorted[lo]*(1-frac) + sorted[hi]*frac
 }
 
 // percentileRank computes percentile ranks (0-100) for a slice of values.

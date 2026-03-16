@@ -181,6 +181,7 @@ export function WatchlistBuilderPage() {
             <WatchlistMetricFilters
               filters={metricFilters}
               onChange={setMetricFilters}
+              stats={data?.Stats}
             />
           </Card>
         </div>

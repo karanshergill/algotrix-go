@@ -20,11 +20,20 @@ export type StockScore = {
   Composite: number
 }
 
+export type MetricStat = {
+  min: number
+  p25: number
+  median: number
+  p75: number
+  max: number
+}
+
 export type BuildResult = {
   Qualified: StockScore[]
   Rejected: number
   Total: number
   Symbols: Record<string, string>
+  Stats: Record<string, MetricStat>
 }
 
 export type BreakdownItem = {

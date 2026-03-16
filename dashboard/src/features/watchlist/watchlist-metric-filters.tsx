@@ -2,30 +2,33 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { RotateCcw } from 'lucide-react'
-import type { MetricFilters } from './types'
+import type { MetricFilters, MetricStat } from './types'
 
 const FILTER_DEFS: {
   key: keyof MetricFilters
   label: string
   dir: 'min' | 'max'
   unit: string
-  placeholder: string
+  statKey: string
+  fallbackPlaceholder: string
+  format: (v: number) => string
 }[] = [
-  { key: 'minADRPct', label: 'ADR%', dir: 'min', unit: '%', placeholder: 'e.g. 3.0' },
-  { key: 'minRangeEff', label: 'Range Eff', dir: 'min', unit: '', placeholder: 'e.g. 0.35' },
-  { key: 'minMomentum', label: '|Momentum|', dir: 'min', unit: '%', placeholder: 'e.g. 3' },
-  { key: 'minParkinson', label: 'Parkinson', dir: 'min', unit: '', placeholder: 'e.g. 0.02' },
-  { key: 'maxAmihud', label: 'Amihud', dir: 'max', unit: '', placeholder: 'e.g. 1e-10' },
-  { key: 'minTradeSize', label: 'Trade Size', dir: 'min', unit: '₹', placeholder: 'e.g. 30000' },
-  { key: 'minATRPct', label: 'ATR%', dir: 'min', unit: '%', placeholder: 'e.g. 2.0' },
+  { key: 'minADRPct', label: 'ADR%', dir: 'min', unit: '%', statKey: 'adrPct', fallbackPlaceholder: 'e.g. 3.0', format: (v) => v.toFixed(2) },
+  { key: 'minRangeEff', label: 'Range Eff', dir: 'min', unit: '', statKey: 'rangeEff', fallbackPlaceholder: 'e.g. 0.35', format: (v) => v.toFixed(3) },
+  { key: 'minMomentum', label: '|Momentum|', dir: 'min', unit: '%', statKey: 'momentum', fallbackPlaceholder: 'e.g. 3', format: (v) => (v * 100).toFixed(1) },
+  { key: 'minParkinson', label: 'Parkinson', dir: 'min', unit: '', statKey: 'parkinson', fallbackPlaceholder: 'e.g. 0.02', format: (v) => v.toFixed(4) },
+  { key: 'maxAmihud', label: 'Amihud', dir: 'max', unit: '', statKey: 'amihud', fallbackPlaceholder: 'e.g. 1e-10', format: (v) => v.toExponential(1) },
+  { key: 'minTradeSize', label: 'Trade Size', dir: 'min', unit: '₹', statKey: 'tradeSize', fallbackPlaceholder: 'e.g. 30000', format: (v) => Math.round(v).toLocaleString() },
+  { key: 'minATRPct', label: 'ATR%', dir: 'min', unit: '%', statKey: 'atrPct', fallbackPlaceholder: 'e.g. 2.0', format: (v) => v.toFixed(2) },
 ]
 
 type Props = {
   filters: MetricFilters
   onChange: (f: MetricFilters) => void
+  stats?: Record<string, MetricStat>
 }
 
-export function WatchlistMetricFilters({ filters, onChange }: Props) {
+export function WatchlistMetricFilters({ filters, onChange, stats }: Props) {
   const activeCount = Object.values(filters).filter((v) => v !== '').length
 
   const handleReset = () => {
@@ -61,21 +64,32 @@ export function WatchlistMetricFilters({ filters, onChange }: Props) {
         )}
       </div>
       <div className='grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-2'>
-        {FILTER_DEFS.map(({ key, label, dir, unit, placeholder }) => (
-          <div key={key} className='space-y-0.5'>
-            <Label className='text-[10px] text-muted-foreground'>
-              {label} <span className='opacity-60'>({dir} {unit})</span>
-            </Label>
-            <Input
-              type='text'
-              inputMode='decimal'
-              className='h-7 text-xs tabular-nums'
-              placeholder={placeholder}
-              value={filters[key]}
-              onChange={(e) => onChange({ ...filters, [key]: e.target.value })}
-            />
-          </div>
-        ))}
+        {FILTER_DEFS.map(({ key, label, dir, unit, statKey, fallbackPlaceholder, format }) => {
+          const stat = stats?.[statKey]
+          const placeholder = stat
+            ? `p25: ${format(stat.p25)}`
+            : fallbackPlaceholder
+          return (
+            <div key={key} className='space-y-0.5'>
+              <Label className='text-[10px] text-muted-foreground'>
+                {label} <span className='opacity-60'>({dir} {unit})</span>
+              </Label>
+              <Input
+                type='text'
+                inputMode='decimal'
+                className='h-7 text-xs tabular-nums'
+                placeholder={placeholder}
+                value={filters[key]}
+                onChange={(e) => onChange({ ...filters, [key]: e.target.value })}
+              />
+              {stat && (
+                <div className='text-[9px] text-muted-foreground/50 tabular-nums'>
+                  {format(stat.min)} → {format(stat.median)} → {format(stat.max)}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
