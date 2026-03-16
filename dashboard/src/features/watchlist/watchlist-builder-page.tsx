@@ -5,7 +5,13 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Skeleton } from '@/components/ui/skeleton'
-import { SelectDropdown } from '@/components/select-dropdown'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { HeaderToolbar } from '@/components/layout/header-toolbar'
 import { useWatchlistBuild } from './use-watchlist-build'
 import { WatchlistFunnel } from './watchlist-funnel'
@@ -60,19 +66,21 @@ export function WatchlistBuilderPage() {
         <div className='flex items-end gap-4 flex-wrap'>
           <div className='space-y-1'>
             <Label className='text-xs'>Lookback (days)</Label>
-            <SelectDropdown
-              isControlled
-              defaultValue={String(params.lookback)}
+            <Select
+              value={String(params.lookback)}
               onValueChange={(v) => setParams((p) => ({ ...p, lookback: Number(v) }))}
-              items={[
-                { label: '10 days', value: '10' },
-                { label: '20 days', value: '20' },
-                { label: '30 days', value: '30' },
-                { label: '60 days', value: '60' },
-                { label: '90 days', value: '90' },
-              ]}
-              className='w-28 h-9'
-            />
+            >
+              <SelectTrigger className='w-28 h-9'>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='10'>10 days</SelectItem>
+                <SelectItem value='20'>20 days</SelectItem>
+                <SelectItem value='30'>30 days</SelectItem>
+                <SelectItem value='60'>60 days</SelectItem>
+                <SelectItem value='90'>90 days</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className='flex items-center gap-2 pb-1'>
             <Switch
