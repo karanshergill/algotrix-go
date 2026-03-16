@@ -65,6 +65,17 @@ export function WatchlistBuilderPage() {
   const filteredStocks = applyMetricFilters(qualifiedAll, metricFilters)
   const activeFilterCount = Object.values(metricFilters).filter((v) => v !== '').length
 
+  const engineDefaultWeights = engineDefaults ? {
+    madtv: engineDefaults.weights.madtv ?? DEFAULT_WEIGHTS.madtv,
+    amihud: engineDefaults.weights.amihud ?? DEFAULT_WEIGHTS.amihud,
+    tradeSize: engineDefaults.weights.tradeSize ?? DEFAULT_WEIGHTS.tradeSize,
+    atrPct: engineDefaults.weights.atrPct ?? DEFAULT_WEIGHTS.atrPct,
+    adrPct: engineDefaults.weights.adrPct ?? DEFAULT_WEIGHTS.adrPct,
+    rangeEff: engineDefaults.weights.rangeEff ?? DEFAULT_WEIGHTS.rangeEff,
+    parkinson: engineDefaults.weights.parkinson ?? DEFAULT_WEIGHTS.parkinson,
+    momentum: engineDefaults.weights.momentum ?? DEFAULT_WEIGHTS.momentum,
+  } : undefined
+
   const handleBuild = () => {
     setSubmitted({ ...params })
   }
@@ -86,112 +97,125 @@ export function WatchlistBuilderPage() {
           <div>
             <h1 className='text-lg font-semibold'>Watchlist Builder</h1>
             <p className='text-xs text-muted-foreground'>
-              8-metric scoring engine &middot; percentile ranked
+              8-metric scoring engine &middot; percentile ranked &middot; adaptive thresholds
             </p>
           </div>
         </div>
         <HeaderToolbar />
       </div>
 
-      {/* Config bar */}
+      {/* Configuration Panel — unified card */}
       <div className='px-6 py-4 border-b border-border/50 shrink-0'>
-        <div className='flex items-end gap-4 flex-wrap'>
-          <div className='space-y-1'>
-            <Label className='text-xs'>Lookback (days)</Label>
-            <Select
-              value={String(params.lookback)}
-              onValueChange={(v) => setParams((p) => ({ ...p, lookback: Number(v) }))}
-            >
-              <SelectTrigger className='w-28 h-9'>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value='10'>10 days</SelectItem>
-                <SelectItem value='20'>20 days</SelectItem>
-                <SelectItem value='30'>30 days</SelectItem>
-                <SelectItem value='60'>60 days</SelectItem>
-                <SelectItem value='90'>90 days</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className='space-y-1'>
-            <Label className='text-xs'>MADTV Floor (₹ Cr)</Label>
-            <div className='flex items-center gap-1'>
-              <Button
-                variant='outline'
-                size='icon'
-                className='h-9 w-9 shrink-0'
-                disabled={params.madtvFloor <= 0}
-                onClick={() => setParams((p) => ({ ...p, madtvFloor: Math.max(0, p.madtvFloor - 5e7) }))}
-              >
-                <span className='text-base'>−</span>
-              </Button>
-              <div className='w-20 h-9 flex items-center justify-center rounded-md border border-input bg-background text-sm tabular-nums'>
-                {params.madtvFloor / 1e7}
+        <Card className='p-5'>
+          {/* Section 1: Universe Controls */}
+          <div className='mb-5'>
+            <h3 className='text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3'>
+              Universe
+            </h3>
+            <div className='flex items-end gap-4 flex-wrap'>
+              <div className='space-y-1'>
+                <Label className='text-xs'>Lookback</Label>
+                <Select
+                  value={String(params.lookback)}
+                  onValueChange={(v) => setParams((p) => ({ ...p, lookback: Number(v) }))}
+                >
+                  <SelectTrigger className='w-28 h-9'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='10'>10 days</SelectItem>
+                    <SelectItem value='20'>20 days</SelectItem>
+                    <SelectItem value='30'>30 days</SelectItem>
+                    <SelectItem value='60'>60 days</SelectItem>
+                    <SelectItem value='90'>90 days</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <Button
-                variant='outline'
-                size='icon'
-                className='h-9 w-9 shrink-0'
-                onClick={() => setParams((p) => ({ ...p, madtvFloor: p.madtvFloor + 5e7 }))}
-              >
-                <span className='text-base'>+</span>
-              </Button>
+              <div className='space-y-1'>
+                <Label className='text-xs'>Min MADTV (₹ Cr)</Label>
+                <div className='flex items-center gap-1'>
+                  <Button
+                    variant='outline'
+                    size='icon'
+                    className='h-9 w-9 shrink-0'
+                    disabled={params.madtvFloor <= 0}
+                    onClick={() => setParams((p) => ({ ...p, madtvFloor: Math.max(0, p.madtvFloor - 5e7) }))}
+                  >
+                    <span className='text-base'>−</span>
+                  </Button>
+                  <div className='w-20 h-9 flex items-center justify-center rounded-md border border-input bg-background text-sm tabular-nums'>
+                    {params.madtvFloor / 1e7}
+                  </div>
+                  <Button
+                    variant='outline'
+                    size='icon'
+                    className='h-9 w-9 shrink-0'
+                    onClick={() => setParams((p) => ({ ...p, madtvFloor: p.madtvFloor + 5e7 }))}
+                  >
+                    <span className='text-base'>+</span>
+                  </Button>
+                </div>
+              </div>
+              <div className='flex items-center gap-2 pb-1'>
+                <Switch
+                  id='fno'
+                  checked={params.fnoOnly}
+                  onCheckedChange={(v) => setParams((p) => ({ ...p, fnoOnly: v }))}
+                />
+                <Label htmlFor='fno' className='text-xs'>FnO Stocks Only</Label>
+              </div>
             </div>
           </div>
-          <div className='flex items-center gap-2 pb-1'>
-            <Switch
-              id='fno'
-              checked={params.fnoOnly}
-              onCheckedChange={(v) => setParams((p) => ({ ...p, fnoOnly: v }))}
-            />
-            <Label htmlFor='fno' className='text-xs'>FnO Only</Label>
-          </div>
-          <Button onClick={handleBuild} disabled={isFetching} className='h-9'>
-            {isFetching ? (
-              <>
-                <RefreshCw size={14} className='mr-1.5 animate-spin' />
-                Building...
-              </>
-            ) : (
-              'Build Watchlist'
-            )}
-          </Button>
-        </div>
 
-        {/* Scoring weights + metric filters — always visible */}
-        <div className='grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3'>
-          <Card className='p-4'>
-            <WatchlistWeightSliders
-              weights={params.weights}
-              onChange={(w) => setParams((p) => ({ ...p, weights: w }))}
-              defaults={engineDefaults ? {
-                madtv: engineDefaults.weights.madtv ?? DEFAULT_WEIGHTS.madtv,
-                amihud: engineDefaults.weights.amihud ?? DEFAULT_WEIGHTS.amihud,
-                tradeSize: engineDefaults.weights.tradeSize ?? DEFAULT_WEIGHTS.tradeSize,
-                atrPct: engineDefaults.weights.atrPct ?? DEFAULT_WEIGHTS.atrPct,
-                adrPct: engineDefaults.weights.adrPct ?? DEFAULT_WEIGHTS.adrPct,
-                rangeEff: engineDefaults.weights.rangeEff ?? DEFAULT_WEIGHTS.rangeEff,
-                parkinson: engineDefaults.weights.parkinson ?? DEFAULT_WEIGHTS.parkinson,
-                momentum: engineDefaults.weights.momentum ?? DEFAULT_WEIGHTS.momentum,
-              } : undefined}
-            />
-          </Card>
-          <Card className='p-4'>
-            <WatchlistMetricFilters
-              filters={metricFilters}
-              onChange={setMetricFilters}
-              stats={data?.Stats}
-            />
-          </Card>
-        </div>
+          <div className='border-t border-border/40 my-4' />
+
+          {/* Section 2: Scoring Weights + Metric Filters side by side */}
+          <div className='grid grid-cols-1 lg:grid-cols-2 gap-5'>
+            {/* Scoring Weights */}
+            <div>
+              <WatchlistWeightSliders
+                weights={params.weights}
+                onChange={(w) => setParams((p) => ({ ...p, weights: w }))}
+                defaults={engineDefaultWeights}
+              />
+            </div>
+
+            {/* Metric Filters */}
+            <div>
+              <WatchlistMetricFilters
+                filters={metricFilters}
+                onChange={setMetricFilters}
+                stats={data?.Stats}
+              />
+            </div>
+          </div>
+
+          <div className='border-t border-border/40 my-4' />
+
+          {/* Build button */}
+          <div className='flex items-center justify-between'>
+            <p className='text-xs text-muted-foreground max-w-md'>
+              Scores are computed on the full qualified universe. Metric filters narrow the displayed results without affecting percentile rankings.
+            </p>
+            <Button onClick={handleBuild} disabled={isFetching} size='lg'>
+              {isFetching ? (
+                <>
+                  <RefreshCw size={14} className='mr-1.5 animate-spin' />
+                  Building...
+                </>
+              ) : (
+                'Build Watchlist'
+              )}
+            </Button>
+          </div>
+        </Card>
       </div>
 
-      {/* Content */}
+      {/* Results */}
       <div className='flex-1 overflow-auto px-6 py-5 space-y-5'>
         {!submitted && !data && (
           <div className='flex items-center justify-center h-48 text-muted-foreground text-sm'>
-            Configure parameters and click "Build Watchlist" to start
+            Configure parameters above and click "Build Watchlist" to start
           </div>
         )}
 
@@ -216,7 +240,7 @@ export function WatchlistBuilderPage() {
               filtered={activeFilterCount > 0 ? filteredStocks.length : undefined}
             />
 
-            {/* Charts row */}
+            {/* Charts + Summary */}
             <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
               <WatchlistScoreChart stocks={filteredStocks} />
               <Card className='p-4'>

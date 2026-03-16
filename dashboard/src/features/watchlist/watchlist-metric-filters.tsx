@@ -39,16 +39,16 @@ export function WatchlistMetricFilters({ filters, onChange, stats }: Props) {
     <div className='space-y-3'>
       <div className='flex items-center justify-between'>
         <div>
-          <h4 className='text-xs font-medium text-muted-foreground'>
+          <h4 className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
             Metric Filters
             {activeCount > 0 && (
-              <span className='ml-1.5 text-[10px] bg-primary/15 text-primary px-1.5 py-0.5 rounded-full'>
+              <span className='ml-1.5 text-[10px] normal-case tracking-normal bg-primary/15 text-primary px-1.5 py-0.5 rounded-full'>
                 {activeCount} active
               </span>
             )}
           </h4>
           <p className='text-[10px] text-muted-foreground/60 mt-0.5'>
-            Client-side filters on qualified stocks. Blank = no filter.
+            Narrow results by raw metric values. Grayed hints show today's 25th percentile — stocks below this are in the bottom quartile. Blank = no filter.
           </p>
         </div>
         {activeCount > 0 && (
@@ -67,7 +67,7 @@ export function WatchlistMetricFilters({ filters, onChange, stats }: Props) {
         {FILTER_DEFS.map(({ key, label, dir, unit, statKey, fallbackPlaceholder, format }) => {
           const stat = stats?.[statKey]
           const placeholder = stat
-            ? `p25: ${format(stat.p25)}`
+            ? `25th pctl: ${format(stat.p25)}`
             : fallbackPlaceholder
           return (
             <div key={key} className='space-y-0.5'>
@@ -84,7 +84,7 @@ export function WatchlistMetricFilters({ filters, onChange, stats }: Props) {
               />
               {stat && (
                 <div className='text-[9px] text-muted-foreground/50 tabular-nums'>
-                  {format(stat.min)} → {format(stat.median)} → {format(stat.max)}
+                  min {format(stat.min)} · med {format(stat.median)} · max {format(stat.max)}
                 </div>
               )}
             </div>
