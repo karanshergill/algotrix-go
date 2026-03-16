@@ -182,11 +182,9 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 			continue
 		}
 
-		// Hard gate: MADTV floor.
-		if adtv.MADTV < cfg.MADTVFloor {
-			rejected++
-			continue
-		}
+		// NOTE: MADTV floor is applied AFTER scoring (post-filter) so that
+		// percentile ranks are computed against the full eligible universe.
+		// This keeps scores stable regardless of the floor setting.
 
 		candidates = append(candidates, candidate{
 			isin:      isin,
@@ -237,6 +235,13 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 
 		// Optional composite score floor.
 		if cfg.MinCompositeScore > 0 && composite < cfg.MinCompositeScore {
+			rejected++
+			continue
+		}
+
+		// Post-score filter: MADTV floor (applied after percentile computation
+		// so scores remain stable regardless of floor setting).
+		if cfg.MADTVFloor > 0 && c.madtv < cfg.MADTVFloor {
 			rejected++
 			continue
 		}
