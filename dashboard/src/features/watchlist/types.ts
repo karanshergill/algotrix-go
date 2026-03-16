@@ -85,10 +85,10 @@ export const DEFAULT_WEIGHTS: MetricWeights = {
   amihud: 10,
   tradeSize: 10,
   atrPct: 10,
-  adrPct: 15,
-  rangeEff: 15,
-  parkinson: 10,
-  momentum: 10,
+  adrPct: 18,
+  rangeEff: 17,
+  parkinson: 12,
+  momentum: 13,
 }
 
 export type BuildParams = {

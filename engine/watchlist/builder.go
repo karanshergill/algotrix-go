@@ -53,10 +53,10 @@ func DefaultConfig() BuildConfig {
 		WeightTradeSize: 0.10,
 		WeightATRPct:    0.10,
 		// Opportunity layer (60%).
-		WeightADRPct:      0.15,
-		WeightRangeEff:    0.15,
-		WeightParkinson:   0.10,
-		WeightMomentum:    0.10,
+		WeightADRPct:      0.18,
+		WeightRangeEff:    0.17,
+		WeightParkinson:   0.12,
+		WeightMomentum:    0.13,
 		MinCompositeScore: 0,
 	}
 }
