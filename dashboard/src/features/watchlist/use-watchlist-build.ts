@@ -6,6 +6,7 @@ async function fetchBuildReport(params: BuildParams): Promise<BuildResult> {
     lookback: String(params.lookback),
     fnoOnly: String(params.fnoOnly),
     madtvFloor: String(params.madtvFloor),
+    weights: JSON.stringify(params.weights),
   })
   const res = await fetch(`/api/watchlists/build-report?${sp}`)
   if (!res.ok) throw new Error(`Build report failed: ${res.statusText}`)
@@ -14,7 +15,7 @@ async function fetchBuildReport(params: BuildParams): Promise<BuildResult> {
 
 export function useWatchlistBuild(params: BuildParams, enabled: boolean) {
   return useQuery({
-    queryKey: ['watchlist-build', params.lookback, params.fnoOnly, params.madtvFloor],
+    queryKey: ['watchlist-build', params.lookback, params.fnoOnly, params.madtvFloor, params.weights],
     queryFn: () => fetchBuildReport(params),
     enabled,
     staleTime: 10 * 60 * 1000,

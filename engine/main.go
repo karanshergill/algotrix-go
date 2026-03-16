@@ -314,12 +314,12 @@ func runBhavcopy() {
 }
 
 // runWatchlist builds and explains watchlists.
-// Usage: algotrix watchlist build [--lookback 30] [--coverage 1.0] [--madtv-floor 1e9] [--json] [--csv /path] [--fno-only]
+// Usage: algotrix watchlist build [--lookback 30] [--coverage 1.0] [--madtv-floor 1e9] [--json] [--csv /path] [--fno-only] [--weights JSON]
 //        algotrix watchlist explain --symbol RELIANCE [--lookback 30]
 func runWatchlist() {
 	if len(os.Args) < 3 {
 		fmt.Println("Usage:")
-		fmt.Println("  watchlist build   [--lookback N] [--madtv-floor N] [--json] [--csv path] [--fno-only]")
+		fmt.Println("  watchlist build   [--lookback N] [--madtv-floor N] [--json] [--csv path] [--fno-only] [--weights JSON]")
 		fmt.Println("  watchlist explain --symbol SYMBOL [--lookback N]")
 		return
 	}
@@ -327,7 +327,7 @@ func runWatchlist() {
 	subCmd := os.Args[2]
 
 	// Parse common flags.
-	var symbolFlag, csvPath string
+	var symbolFlag, csvPath, weightsJSON string
 	lookback := 30
 	coverage := 1.0
 	madtvFloor := 1e9 // ₹100 Crore
@@ -356,6 +356,8 @@ func runWatchlist() {
 			jsonOutput = true
 		case "--fno-only":
 			fnoOnly = true
+		case "--weights":
+			if i+1 < len(os.Args) { weightsJSON = os.Args[i+1] }
 		}
 	}
 
@@ -376,6 +378,34 @@ func runWatchlist() {
 	cfg.LookbackDays = lookback
 	cfg.MinCoverage = coverage
 	cfg.MADTVFloor = madtvFloor
+
+	// Parse custom weights JSON: {"madtv":10,"amihud":10,"atrPct":10,...}
+	// Values are raw (0-100), auto-normalized to sum to 1.0.
+	if weightsJSON != "" {
+		var raw map[string]float64
+		if err := json.Unmarshal([]byte(weightsJSON), &raw); err == nil {
+			var total float64
+			for _, v := range raw {
+				total += v
+			}
+			if total > 0 {
+				norm := func(key string) float64 {
+					if v, ok := raw[key]; ok {
+						return v / total
+					}
+					return 0
+				}
+				cfg.WeightMADTV = norm("madtv")
+				cfg.WeightAmihud = norm("amihud")
+				cfg.WeightTradeSize = norm("tradeSize")
+				cfg.WeightATRPct = norm("atrPct")
+				cfg.WeightADRPct = norm("adrPct")
+				cfg.WeightRangeEff = norm("rangeEff")
+				cfg.WeightParkinson = norm("parkinson")
+				cfg.WeightMomentum = norm("momentum")
+			}
+		}
+	}
 
 	// FnO-only universe filter.
 	if fnoOnly {

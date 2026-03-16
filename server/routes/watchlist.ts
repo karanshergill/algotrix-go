@@ -59,9 +59,12 @@ watchlist.get('/build-report', async (c) => {
   const fnoOnly = c.req.query('fnoOnly') === 'true'
   const madtvFloor = c.req.query('madtvFloor')
 
+  const weights = c.req.query('weights')
+
   const args = ['watchlist', 'build', '--json', '--lookback', lookback]
   if (fnoOnly) args.push('--fno-only')
   if (madtvFloor) args.push('--madtv-floor', madtvFloor)
+  if (weights) args.push('--weights', weights)
 
   try {
     const { stdout } = await execFileAsync(ENGINE_BIN, args, {

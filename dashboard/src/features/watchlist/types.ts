@@ -69,8 +69,31 @@ export type ExplainResult = {
   weaknesses?: string[]
 }
 
+export type MetricWeights = {
+  madtv: number
+  amihud: number
+  tradeSize: number
+  atrPct: number
+  adrPct: number
+  rangeEff: number
+  parkinson: number
+  momentum: number
+}
+
+export const DEFAULT_WEIGHTS: MetricWeights = {
+  madtv: 10,
+  amihud: 10,
+  tradeSize: 10,
+  atrPct: 10,
+  adrPct: 15,
+  rangeEff: 15,
+  parkinson: 10,
+  momentum: 10,
+}
+
 export type BuildParams = {
   lookback: number
   fnoOnly: boolean
   madtvFloor: number // in rupees (e.g. 1e9 = ₹100Cr)
+  weights: MetricWeights
 }
