@@ -103,33 +103,47 @@ export function WatchlistBuilderPage() {
         <HeaderToolbar />
       </div>
 
+      {/* Action bar: Lookback + Build */}
+      <div className='flex items-center justify-between px-6 py-2 border-b border-border/50 shrink-0'>
+        <div className='flex items-center gap-2'>
+          <Label className='text-[10px] uppercase tracking-wider text-muted-foreground/70'>Lookback</Label>
+          <Select
+            value={String(params.lookback)}
+            onValueChange={(v) => setParams((p) => ({ ...p, lookback: Number(v) }))}
+          >
+            <SelectTrigger className='w-24 h-7 text-xs'>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='10'>10 days</SelectItem>
+              <SelectItem value='20'>20 days</SelectItem>
+              <SelectItem value='30'>30 days</SelectItem>
+              <SelectItem value='60'>60 days</SelectItem>
+              <SelectItem value='90'>90 days</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Button onClick={handleBuild} disabled={isFetching} size='sm' className='h-7 px-5'>
+          {isFetching ? (
+            <>
+              <RefreshCw size={12} className='mr-1.5 animate-spin' />
+              Building…
+            </>
+          ) : (
+            'Build Watchlist'
+          )}
+        </Button>
+      </div>
+
       {/* Scrollable content */}
       <div className='flex-1 overflow-auto'>
         <div className='px-6 py-4 space-y-3'>
 
-          {/* Config card — all controls in one place */}
+          {/* Config card — universe + weights + filters */}
           <Card className='overflow-hidden'>
             {/* Row 1: All universe controls + Build button in one compact bar */}
-            <div className='flex items-center justify-between gap-4 px-4 py-2.5 bg-muted/30 flex-wrap'>
-              <div className='flex items-center gap-5 flex-wrap'>
-                <div className='flex items-center gap-2'>
-                  <Label className='text-[10px] uppercase tracking-wider text-muted-foreground/70'>Lookback</Label>
-                  <Select
-                    value={String(params.lookback)}
-                    onValueChange={(v) => setParams((p) => ({ ...p, lookback: Number(v) }))}
-                  >
-                    <SelectTrigger className='w-24 h-7 text-xs'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value='10'>10 days</SelectItem>
-                      <SelectItem value='20'>20 days</SelectItem>
-                      <SelectItem value='30'>30 days</SelectItem>
-                      <SelectItem value='60'>60 days</SelectItem>
-                      <SelectItem value='90'>90 days</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+            {/* Universe controls */}
+            <div className='flex items-center gap-5 px-4 py-2.5 bg-muted/30 flex-wrap'>
                 <div className='flex items-center gap-2'>
                   <Label className='text-[10px] uppercase tracking-wider text-muted-foreground/70'>Min MADTV</Label>
                   <div className='flex items-center gap-0.5'>
@@ -164,17 +178,6 @@ export function WatchlistBuilderPage() {
                   />
                   <Label htmlFor='fno' className='text-xs'>FnO Only</Label>
                 </div>
-              </div>
-              <Button onClick={handleBuild} disabled={isFetching} size='sm' className='h-7 px-4'>
-                {isFetching ? (
-                  <>
-                    <RefreshCw size={12} className='mr-1.5 animate-spin' />
-                    Building…
-                  </>
-                ) : (
-                  'Build Watchlist'
-                )}
-              </Button>
             </div>
 
             {/* Row 2: Scoring Weights — full width, compact grid */}
