@@ -19,11 +19,13 @@ import { WatchlistTable } from './watchlist-table'
 import { WatchlistScoreChart } from './watchlist-score-chart'
 import { WatchlistDetailDrawer } from './watchlist-detail-drawer'
 import { WatchlistWeightSliders } from './watchlist-weight-sliders'
-import { DEFAULT_WEIGHTS, type BuildParams } from './types'
+import { WatchlistMetricFilters, emptyFilters, applyMetricFilters } from './watchlist-metric-filters'
+import { DEFAULT_WEIGHTS, type BuildParams, type MetricFilters } from './types'
 
 export function WatchlistBuilderPage() {
   const [params, setParams] = useState<BuildParams>({ lookback: 30, fnoOnly: false, madtvFloor: 1e9, weights: { ...DEFAULT_WEIGHTS } })
   const [submitted, setSubmitted] = useState<BuildParams | null>(null)
+  const [metricFilters, setMetricFilters] = useState<MetricFilters>(emptyFilters())
   const [selectedSymbol, setSelectedSymbol] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false)
 
@@ -33,6 +35,9 @@ export function WatchlistBuilderPage() {
   )
 
   const symbolMap = data?.Symbols ?? {}
+  const qualifiedAll = data?.Qualified ?? []
+  const filteredStocks = applyMetricFilters(qualifiedAll, metricFilters)
+  const activeFilterCount = Object.values(metricFilters).filter((v) => v !== '').length
 
   const handleBuild = () => {
     setSubmitted({ ...params })
@@ -128,13 +133,21 @@ export function WatchlistBuilderPage() {
           </Button>
         </div>
 
-        {/* Scoring weights — always visible */}
-        <Card className='p-4 max-w-lg mt-3'>
-          <WatchlistWeightSliders
-            weights={params.weights}
-            onChange={(w) => setParams((p) => ({ ...p, weights: w }))}
-          />
-        </Card>
+        {/* Scoring weights + metric filters — always visible */}
+        <div className='grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3'>
+          <Card className='p-4'>
+            <WatchlistWeightSliders
+              weights={params.weights}
+              onChange={(w) => setParams((p) => ({ ...p, weights: w }))}
+            />
+          </Card>
+          <Card className='p-4'>
+            <WatchlistMetricFilters
+              filters={metricFilters}
+              onChange={setMetricFilters}
+            />
+          </Card>
+        </div>
       </div>
 
       {/* Content */}
@@ -162,26 +175,27 @@ export function WatchlistBuilderPage() {
             <WatchlistFunnel
               total={data.Total}
               rejected={data.Rejected}
-              qualified={data.Qualified.length}
+              qualified={qualifiedAll.length}
+              filtered={activeFilterCount > 0 ? filteredStocks.length : undefined}
             />
 
             {/* Charts row */}
             <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
-              <WatchlistScoreChart stocks={data.Qualified} />
+              <WatchlistScoreChart stocks={filteredStocks} />
               <Card className='p-4'>
                 <h3 className='text-sm font-medium mb-1'>Summary</h3>
                 <div className='grid grid-cols-2 gap-x-6 gap-y-2 text-sm mt-3'>
                   <div>
                     <span className='text-muted-foreground'>Top Score</span>
                     <div className='font-bold tabular-nums text-emerald-400'>
-                      {data.Qualified[0]?.Composite.toFixed(1) ?? '—'}
+                      {filteredStocks[0]?.Composite.toFixed(1) ?? '—'}
                     </div>
                   </div>
                   <div>
                     <span className='text-muted-foreground'>Median Score</span>
                     <div className='font-bold tabular-nums'>
-                      {data.Qualified.length > 0
-                        ? data.Qualified[Math.floor(data.Qualified.length / 2)].Composite.toFixed(1)
+                      {filteredStocks.length > 0
+                        ? filteredStocks[Math.floor(filteredStocks.length / 2)].Composite.toFixed(1)
                         : '—'}
                     </div>
                   </div>
@@ -189,7 +203,7 @@ export function WatchlistBuilderPage() {
                     <span className='text-muted-foreground'>Pass Rate</span>
                     <div className='font-bold tabular-nums'>
                       {data.Total > 0
-                        ? ((data.Qualified.length / data.Total) * 100).toFixed(1)
+                        ? ((filteredStocks.length / data.Total) * 100).toFixed(1)
                         : '0'}%
                     </div>
                   </div>
@@ -207,12 +221,12 @@ export function WatchlistBuilderPage() {
                 <h3 className='text-sm font-medium'>
                   Qualified Stocks
                   <span className='ml-2 text-xs text-muted-foreground'>
-                    ({data.Qualified.length} stocks)
+                    ({filteredStocks.length}{activeFilterCount > 0 ? ` of ${qualifiedAll.length}` : ''} stocks)
                   </span>
                 </h3>
               </div>
               <WatchlistTable
-                stocks={data.Qualified}
+                stocks={filteredStocks}
                 symbolLookup={symbolMap}
                 onRowClick={handleRowClick}
               />

@@ -91,6 +91,16 @@ export const DEFAULT_WEIGHTS: MetricWeights = {
   momentum: 13,
 }
 
+export type MetricFilters = {
+  minADRPct: string
+  minRangeEff: string
+  minMomentum: string
+  minParkinson: string
+  maxAmihud: string
+  minTradeSize: string
+  minATRPct: string
+}
+
 export type BuildParams = {
   lookback: number
   fnoOnly: boolean

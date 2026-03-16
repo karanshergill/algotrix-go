@@ -5,13 +5,17 @@ type Props = {
   total: number
   rejected: number
   qualified: number
+  filtered?: number
 }
 
-export function WatchlistFunnel({ total, rejected, qualified }: Props) {
+export function WatchlistFunnel({ total, rejected, qualified, filtered }: Props) {
   const stages = [
     { label: 'Universe', count: total, color: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
     { label: 'Rejected', count: rejected, color: 'bg-red-500/15 text-red-400 border-red-500/30' },
     { label: 'Qualified', count: qualified, color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
+    ...(filtered !== undefined
+      ? [{ label: 'Filtered', count: filtered, color: 'bg-amber-500/15 text-amber-400 border-amber-500/30' }]
+      : []),
   ]
 
   return (
