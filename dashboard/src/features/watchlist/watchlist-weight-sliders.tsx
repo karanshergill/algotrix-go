@@ -6,6 +6,7 @@ import { DEFAULT_WEIGHTS, type MetricWeights } from './types'
 type Props = {
   weights: MetricWeights
   onChange: (weights: MetricWeights) => void
+  defaults?: MetricWeights
 }
 
 const METRIC_LABELS: { key: keyof MetricWeights; label: string; group: string }[] = [
@@ -24,15 +25,16 @@ function normalizedPct(value: number, total: number): string {
   return `${((value / total) * 100).toFixed(0)}%`
 }
 
-export function WatchlistWeightSliders({ weights, onChange }: Props) {
+export function WatchlistWeightSliders({ weights, onChange, defaults }: Props) {
   const total = Object.values(weights).reduce((a, b) => a + b, 0)
+  const resetTarget = defaults ?? DEFAULT_WEIGHTS
 
   const handleChange = (key: keyof MetricWeights, value: number) => {
     onChange({ ...weights, [key]: value })
   }
 
   const handleReset = () => {
-    onChange({ ...DEFAULT_WEIGHTS })
+    onChange({ ...resetTarget })
   }
 
   const tradability = METRIC_LABELS.filter((m) => m.group === 'Tradability')

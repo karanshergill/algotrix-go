@@ -319,12 +319,37 @@ func runBhavcopy() {
 func runWatchlist() {
 	if len(os.Args) < 3 {
 		fmt.Println("Usage:")
-		fmt.Println("  watchlist build   [--lookback N] [--madtv-floor N] [--json] [--csv path] [--fno-only] [--weights JSON]")
-		fmt.Println("  watchlist explain --symbol SYMBOL [--lookback N]")
+		fmt.Println("  watchlist build     [--lookback N] [--madtv-floor N] [--json] [--csv path] [--fno-only] [--weights JSON]")
+		fmt.Println("  watchlist explain   --symbol SYMBOL [--lookback N]")
+		fmt.Println("  watchlist defaults  (prints default config as JSON)")
 		return
 	}
 
 	subCmd := os.Args[2]
+
+	// Quick subcommand: defaults — no DB needed.
+	if subCmd == "defaults" {
+		cfg := watchlist.DefaultConfig()
+		out := map[string]interface{}{
+			"lookback":  cfg.LookbackDays,
+			"madtvFloor": cfg.MADTVFloor,
+			"fnoOnly":   false,
+			"weights": map[string]float64{
+				"madtv":     cfg.WeightMADTV,
+				"amihud":    cfg.WeightAmihud,
+				"tradeSize": cfg.WeightTradeSize,
+				"atrPct":    cfg.WeightATRPct,
+				"adrPct":    cfg.WeightADRPct,
+				"rangeEff":  cfg.WeightRangeEff,
+				"parkinson": cfg.WeightParkinson,
+				"momentum":  cfg.WeightMomentum,
+			},
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		enc.Encode(out)
+		return
+	}
 
 	// Parse common flags.
 	var symbolFlag, csvPath, weightsJSON string

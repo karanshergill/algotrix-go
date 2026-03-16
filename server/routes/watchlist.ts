@@ -54,6 +54,19 @@ type InsertedRow = {
   expires_at: string | null
 }
 
+watchlist.get('/defaults', async (c) => {
+  try {
+    const { stdout } = await execFileAsync(ENGINE_BIN, ['watchlist', 'defaults'], {
+      cwd: ENGINE_DIR,
+      timeout: 5_000,
+    })
+    return c.json(JSON.parse(stdout))
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Engine failed'
+    return c.json({ error: message }, 500)
+  }
+})
+
 watchlist.get('/build-report', async (c) => {
   const lookback = c.req.query('lookback') ?? '30'
   const fnoOnly = c.req.query('fnoOnly') === 'true'

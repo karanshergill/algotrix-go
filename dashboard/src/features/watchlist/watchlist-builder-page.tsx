@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Crosshair, RefreshCw } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { HeaderToolbar } from '@/components/layout/header-toolbar'
-import { useWatchlistBuild } from './use-watchlist-build'
+import { useWatchlistBuild, useWatchlistDefaults } from './use-watchlist-build'
 import { WatchlistFunnel } from './watchlist-funnel'
 import { WatchlistTable } from './watchlist-table'
 import { WatchlistScoreChart } from './watchlist-score-chart'
@@ -28,6 +28,32 @@ export function WatchlistBuilderPage() {
   const [metricFilters, setMetricFilters] = useState<MetricFilters>(emptyFilters())
   const [selectedSymbol, setSelectedSymbol] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false)
+
+  const { data: engineDefaults } = useWatchlistDefaults()
+
+  // Hydrate params from engine defaults on first load.
+  const [hydrated, setHydrated] = useState(false)
+  useEffect(() => {
+    if (engineDefaults && !hydrated) {
+      const w = engineDefaults.weights
+      setParams({
+        lookback: engineDefaults.lookback,
+        fnoOnly: engineDefaults.fnoOnly,
+        madtvFloor: engineDefaults.madtvFloor,
+        weights: {
+          madtv: w.madtv ?? DEFAULT_WEIGHTS.madtv,
+          amihud: w.amihud ?? DEFAULT_WEIGHTS.amihud,
+          tradeSize: w.tradeSize ?? DEFAULT_WEIGHTS.tradeSize,
+          atrPct: w.atrPct ?? DEFAULT_WEIGHTS.atrPct,
+          adrPct: w.adrPct ?? DEFAULT_WEIGHTS.adrPct,
+          rangeEff: w.rangeEff ?? DEFAULT_WEIGHTS.rangeEff,
+          parkinson: w.parkinson ?? DEFAULT_WEIGHTS.parkinson,
+          momentum: w.momentum ?? DEFAULT_WEIGHTS.momentum,
+        },
+      })
+      setHydrated(true)
+    }
+  }, [engineDefaults, hydrated])
 
   const { data, isLoading, isFetching } = useWatchlistBuild(
     submitted ?? params,
@@ -139,6 +165,16 @@ export function WatchlistBuilderPage() {
             <WatchlistWeightSliders
               weights={params.weights}
               onChange={(w) => setParams((p) => ({ ...p, weights: w }))}
+              defaults={engineDefaults ? {
+                madtv: engineDefaults.weights.madtv ?? DEFAULT_WEIGHTS.madtv,
+                amihud: engineDefaults.weights.amihud ?? DEFAULT_WEIGHTS.amihud,
+                tradeSize: engineDefaults.weights.tradeSize ?? DEFAULT_WEIGHTS.tradeSize,
+                atrPct: engineDefaults.weights.atrPct ?? DEFAULT_WEIGHTS.atrPct,
+                adrPct: engineDefaults.weights.adrPct ?? DEFAULT_WEIGHTS.adrPct,
+                rangeEff: engineDefaults.weights.rangeEff ?? DEFAULT_WEIGHTS.rangeEff,
+                parkinson: engineDefaults.weights.parkinson ?? DEFAULT_WEIGHTS.parkinson,
+                momentum: engineDefaults.weights.momentum ?? DEFAULT_WEIGHTS.momentum,
+              } : undefined}
             />
           </Card>
           <Card className='p-4'>

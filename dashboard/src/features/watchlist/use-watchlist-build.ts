@@ -1,5 +1,26 @@
 import { useQuery } from '@tanstack/react-query'
-import type { BuildResult, BuildParams } from './types'
+import type { BuildResult, BuildParams, MetricWeights } from './types'
+
+export type EngineDefaults = {
+  lookback: number
+  madtvFloor: number
+  fnoOnly: boolean
+  weights: Record<string, number>
+}
+
+async function fetchDefaults(): Promise<EngineDefaults> {
+  const res = await fetch('/api/watchlists/defaults')
+  if (!res.ok) throw new Error('Failed to fetch defaults')
+  return res.json()
+}
+
+export function useWatchlistDefaults() {
+  return useQuery({
+    queryKey: ['watchlist-defaults'],
+    queryFn: fetchDefaults,
+    staleTime: Infinity, // defaults don't change at runtime
+  })
+}
 
 async function fetchBuildReport(params: BuildParams): Promise<BuildResult> {
   const sp = new URLSearchParams({
