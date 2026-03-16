@@ -44,12 +44,12 @@ export function WatchlistWeightSliders({ weights, onChange, defaults }: Props) {
   const opportunityTotal = opportunity.reduce((sum, m) => sum + weights[m.key], 0)
 
   return (
-    <div className='space-y-4'>
+    <div className='space-y-3'>
       <div className='flex items-center justify-between'>
         <div>
           <h4 className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>Scoring Weights</h4>
           <p className='text-[10px] text-muted-foreground/60 mt-0.5'>
-            Controls how much each metric influences the composite score. Auto-normalizes to 100%.
+            How much each metric influences the composite score. Auto-normalizes to 100%.
           </p>
         </div>
         <Button
@@ -68,7 +68,7 @@ export function WatchlistWeightSliders({ weights, onChange, defaults }: Props) {
         <div className='text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-2'>
           Tradability ({normalizedPct(tradabilityTotal, total)})
         </div>
-        <div className='space-y-2.5'>
+        <div className='space-y-2'>
           {tradability.map((m) => (
             <SliderRow
               key={m.key}
@@ -83,10 +83,10 @@ export function WatchlistWeightSliders({ weights, onChange, defaults }: Props) {
 
       {/* Opportunity group */}
       <div>
-        <div className='text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-2'>
+        <div className='text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-1.5'>
           Opportunity ({normalizedPct(opportunityTotal, total)})
         </div>
-        <div className='space-y-2.5'>
+        <div className='space-y-2'>
           {opportunity.map((m) => (
             <SliderRow
               key={m.key}

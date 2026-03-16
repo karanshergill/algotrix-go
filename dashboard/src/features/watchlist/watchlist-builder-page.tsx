@@ -31,7 +31,6 @@ export function WatchlistBuilderPage() {
 
   const { data: engineDefaults } = useWatchlistDefaults()
 
-  // Hydrate params from engine defaults on first load.
   const [hydrated, setHydrated] = useState(false)
   useEffect(() => {
     if (engineDefaults && !hydrated) {
@@ -89,214 +88,201 @@ export function WatchlistBuilderPage() {
   return (
     <div className='flex flex-col h-full'>
       {/* Header */}
-      <div className='flex items-center justify-between px-6 py-4 border-b border-border shrink-0'>
+      <div className='flex items-center justify-between px-6 py-3 border-b border-border shrink-0'>
         <div className='flex items-center gap-3'>
-          <div className='p-2 rounded-lg bg-primary/10'>
-            <Crosshair size={18} className='text-primary' />
+          <div className='p-1.5 rounded-lg bg-primary/10'>
+            <Crosshair size={16} className='text-primary' />
           </div>
           <div>
-            <h1 className='text-lg font-semibold'>Watchlist Builder</h1>
-            <p className='text-xs text-muted-foreground'>
-              8-metric scoring engine &middot; percentile ranked &middot; adaptive thresholds
+            <h1 className='text-base font-semibold leading-tight'>Watchlist Builder</h1>
+            <p className='text-[10px] text-muted-foreground'>
+              8-metric scoring · percentile ranked · adaptive thresholds
             </p>
           </div>
         </div>
         <HeaderToolbar />
       </div>
 
-      {/* Configuration Panel — unified card */}
-      <div className='px-6 py-4 border-b border-border/50 shrink-0'>
-        <Card className='p-5'>
-          {/* Stage 1: Universe Filters — defines the scoring pool */}
-          <div className='mb-5'>
-            <h3 className='text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1'>
-              Stage 1 · Universe Filters
-            </h3>
-            <p className='text-[10px] text-muted-foreground/60 mb-3'>
-              Defines which stocks enter the scoring engine. Changes here recompute all scores and percentiles.
-            </p>
-            <div className='flex items-end gap-4 flex-wrap'>
-              <div className='space-y-1'>
-                <Label className='text-xs'>Lookback</Label>
-                <Select
-                  value={String(params.lookback)}
-                  onValueChange={(v) => setParams((p) => ({ ...p, lookback: Number(v) }))}
-                >
-                  <SelectTrigger className='w-28 h-9'>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='10'>10 days</SelectItem>
-                    <SelectItem value='20'>20 days</SelectItem>
-                    <SelectItem value='30'>30 days</SelectItem>
-                    <SelectItem value='60'>60 days</SelectItem>
-                    <SelectItem value='90'>90 days</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className='space-y-1'>
-                <Label className='text-xs'>Min MADTV (₹ Cr)</Label>
-                <div className='flex items-center gap-1'>
-                  <Button
-                    variant='outline'
-                    size='icon'
-                    className='h-9 w-9 shrink-0'
-                    disabled={params.madtvFloor <= 0}
-                    onClick={() => setParams((p) => ({ ...p, madtvFloor: Math.max(0, p.madtvFloor - 5e7) }))}
+      {/* Scrollable content */}
+      <div className='flex-1 overflow-auto'>
+        <div className='px-6 py-4 space-y-4'>
+
+          {/* Row 1: Universe Filters (Stage 1) + Build Button */}
+          <Card className='px-4 py-3'>
+            <div className='flex items-center justify-between gap-4 flex-wrap'>
+              <div className='flex items-end gap-4 flex-wrap'>
+                <div className='space-y-0.5'>
+                  <Label className='text-[10px] uppercase tracking-wider text-muted-foreground'>Lookback</Label>
+                  <Select
+                    value={String(params.lookback)}
+                    onValueChange={(v) => setParams((p) => ({ ...p, lookback: Number(v) }))}
                   >
-                    <span className='text-base'>−</span>
-                  </Button>
-                  <div className='w-20 h-9 flex items-center justify-center rounded-md border border-input bg-background text-sm tabular-nums'>
-                    {params.madtvFloor / 1e7}
+                    <SelectTrigger className='w-24 h-8 text-xs'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='10'>10 days</SelectItem>
+                      <SelectItem value='20'>20 days</SelectItem>
+                      <SelectItem value='30'>30 days</SelectItem>
+                      <SelectItem value='60'>60 days</SelectItem>
+                      <SelectItem value='90'>90 days</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className='space-y-0.5'>
+                  <Label className='text-[10px] uppercase tracking-wider text-muted-foreground'>Min MADTV (₹ Cr)</Label>
+                  <div className='flex items-center gap-0.5'>
+                    <Button
+                      variant='outline'
+                      size='icon'
+                      className='h-8 w-8 shrink-0'
+                      disabled={params.madtvFloor <= 0}
+                      onClick={() => setParams((p) => ({ ...p, madtvFloor: Math.max(0, p.madtvFloor - 5e7) }))}
+                    >
+                      <span className='text-sm'>−</span>
+                    </Button>
+                    <div className='w-16 h-8 flex items-center justify-center rounded-md border border-input bg-background text-xs tabular-nums font-medium'>
+                      {params.madtvFloor / 1e7}
+                    </div>
+                    <Button
+                      variant='outline'
+                      size='icon'
+                      className='h-8 w-8 shrink-0'
+                      onClick={() => setParams((p) => ({ ...p, madtvFloor: p.madtvFloor + 5e7 }))}
+                    >
+                      <span className='text-sm'>+</span>
+                    </Button>
                   </div>
-                  <Button
-                    variant='outline'
-                    size='icon'
-                    className='h-9 w-9 shrink-0'
-                    onClick={() => setParams((p) => ({ ...p, madtvFloor: p.madtvFloor + 5e7 }))}
-                  >
-                    <span className='text-base'>+</span>
-                  </Button>
+                </div>
+                <div className='flex items-center gap-2 h-8'>
+                  <Switch
+                    id='fno'
+                    checked={params.fnoOnly}
+                    onCheckedChange={(v) => setParams((p) => ({ ...p, fnoOnly: v }))}
+                  />
+                  <Label htmlFor='fno' className='text-xs'>FnO Only</Label>
                 </div>
               </div>
-              <div className='flex items-center gap-2 pb-1'>
-                <Switch
-                  id='fno'
-                  checked={params.fnoOnly}
-                  onCheckedChange={(v) => setParams((p) => ({ ...p, fnoOnly: v }))}
-                />
-                <Label htmlFor='fno' className='text-xs'>FnO Stocks Only</Label>
-              </div>
+              <Button onClick={handleBuild} disabled={isFetching} className='h-8 px-5'>
+                {isFetching ? (
+                  <>
+                    <RefreshCw size={13} className='mr-1.5 animate-spin' />
+                    Building…
+                  </>
+                ) : (
+                  'Build Watchlist'
+                )}
+              </Button>
             </div>
-          </div>
+            <p className='text-[9px] text-muted-foreground/50 mt-2'>
+              Stage 1 · Universe filters define the scoring pool. Changes recompute all scores and percentiles.
+            </p>
+          </Card>
 
-          <div className='border-t border-border/40 my-4' />
-
-          {/* Stage 2: Scoring + Metric Filters side by side */}
-          <div className='grid grid-cols-1 lg:grid-cols-2 gap-5'>
-            {/* Scoring Weights */}
-            <div>
+          {/* Row 2: Scoring Weights + Metric Filters — compact side by side */}
+          <div className='grid grid-cols-1 lg:grid-cols-5 gap-4'>
+            {/* Weights: 2 columns */}
+            <Card className='lg:col-span-2 p-4'>
               <WatchlistWeightSliders
                 weights={params.weights}
                 onChange={(w) => setParams((p) => ({ ...p, weights: w }))}
                 defaults={engineDefaultWeights}
               />
-            </div>
+            </Card>
 
-            {/* Metric Filters */}
-            <div>
+            {/* Metric Filters: 3 columns */}
+            <Card className='lg:col-span-3 p-4'>
               <WatchlistMetricFilters
                 filters={metricFilters}
                 onChange={setMetricFilters}
                 stats={data?.Stats}
               />
-            </div>
-          </div>
-
-          <div className='border-t border-border/40 my-4' />
-
-          {/* Build button */}
-          <div className='flex items-center justify-between'>
-            <p className='text-xs text-muted-foreground max-w-md'>
-              Scores are computed on the full qualified universe. Metric filters narrow the displayed results without affecting percentile rankings.
-            </p>
-            <Button onClick={handleBuild} disabled={isFetching} size='lg'>
-              {isFetching ? (
-                <>
-                  <RefreshCw size={14} className='mr-1.5 animate-spin' />
-                  Building...
-                </>
-              ) : (
-                'Build Watchlist'
-              )}
-            </Button>
-          </div>
-        </Card>
-      </div>
-
-      {/* Results */}
-      <div className='flex-1 overflow-auto px-6 py-5 space-y-5'>
-        {!submitted && !data && (
-          <div className='flex items-center justify-center h-48 text-muted-foreground text-sm'>
-            Configure parameters above and click "Build Watchlist" to start
-          </div>
-        )}
-
-        {isLoading && (
-          <div className='space-y-4'>
-            <div className='flex gap-3'>
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className='h-20 w-36 rounded-lg' />
-              ))}
-            </div>
-            <Skeleton className='h-64 w-full rounded-lg' />
-          </div>
-        )}
-
-        {data && !isLoading && (
-          <>
-            {/* Pipeline funnel */}
-            <WatchlistFunnel
-              total={data.Total}
-              rejected={data.Rejected}
-              qualified={qualifiedAll.length}
-              filtered={activeFilterCount > 0 ? filteredStocks.length : undefined}
-            />
-
-            {/* Charts + Summary */}
-            <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
-              <WatchlistScoreChart stocks={filteredStocks} />
-              <Card className='p-4'>
-                <h3 className='text-sm font-medium mb-1'>Summary</h3>
-                <div className='grid grid-cols-2 gap-x-6 gap-y-2 text-sm mt-3'>
-                  <div>
-                    <span className='text-muted-foreground'>Top Score</span>
-                    <div className='font-bold tabular-nums text-emerald-400'>
-                      {filteredStocks[0]?.Composite.toFixed(1) ?? '—'}
-                    </div>
-                  </div>
-                  <div>
-                    <span className='text-muted-foreground'>Median Score</span>
-                    <div className='font-bold tabular-nums'>
-                      {filteredStocks.length > 0
-                        ? filteredStocks[Math.floor(filteredStocks.length / 2)].Composite.toFixed(1)
-                        : '—'}
-                    </div>
-                  </div>
-                  <div>
-                    <span className='text-muted-foreground'>Pass Rate</span>
-                    <div className='font-bold tabular-nums'>
-                      {data.Total > 0
-                        ? ((filteredStocks.length / data.Total) * 100).toFixed(1)
-                        : '0'}%
-                    </div>
-                  </div>
-                  <div>
-                    <span className='text-muted-foreground'>Lookback</span>
-                    <div className='font-bold'>{submitted?.lookback ?? params.lookback}d</div>
-                  </div>
-                </div>
-              </Card>
-            </div>
-
-            {/* Ranked table */}
-            <Card className='overflow-hidden'>
-              <div className='px-4 py-3 border-b border-border/50'>
-                <h3 className='text-sm font-medium'>
-                  Qualified Stocks
-                  <span className='ml-2 text-xs text-muted-foreground'>
-                    ({filteredStocks.length}{activeFilterCount > 0 ? ` of ${qualifiedAll.length}` : ''} stocks)
-                  </span>
-                </h3>
-              </div>
-              <WatchlistTable
-                stocks={filteredStocks}
-                symbolLookup={symbolMap}
-                onRowClick={handleRowClick}
-              />
             </Card>
-          </>
-        )}
+          </div>
+
+          {/* Results */}
+          {!submitted && !data && (
+            <div className='flex items-center justify-center h-32 text-muted-foreground text-sm'>
+              Configure parameters and click "Build Watchlist" to start
+            </div>
+          )}
+
+          {isLoading && (
+            <div className='space-y-4'>
+              <div className='flex gap-3'>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className='h-16 w-32 rounded-lg' />
+                ))}
+              </div>
+              <Skeleton className='h-48 w-full rounded-lg' />
+            </div>
+          )}
+
+          {data && !isLoading && (
+            <>
+              {/* Pipeline funnel */}
+              <WatchlistFunnel
+                total={data.Total}
+                rejected={data.Rejected}
+                qualified={qualifiedAll.length}
+                filtered={activeFilterCount > 0 ? filteredStocks.length : undefined}
+              />
+
+              {/* Charts + Summary */}
+              <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
+                <WatchlistScoreChart stocks={filteredStocks} />
+                <Card className='p-4'>
+                  <h3 className='text-sm font-medium mb-2'>Summary</h3>
+                  <div className='grid grid-cols-2 gap-x-6 gap-y-2 text-sm'>
+                    <div>
+                      <span className='text-muted-foreground text-xs'>Top Score</span>
+                      <div className='font-bold tabular-nums text-emerald-400'>
+                        {filteredStocks[0]?.Composite.toFixed(1) ?? '—'}
+                      </div>
+                    </div>
+                    <div>
+                      <span className='text-muted-foreground text-xs'>Median Score</span>
+                      <div className='font-bold tabular-nums'>
+                        {filteredStocks.length > 0
+                          ? filteredStocks[Math.floor(filteredStocks.length / 2)].Composite.toFixed(1)
+                          : '—'}
+                      </div>
+                    </div>
+                    <div>
+                      <span className='text-muted-foreground text-xs'>Pass Rate</span>
+                      <div className='font-bold tabular-nums'>
+                        {data.Total > 0
+                          ? ((filteredStocks.length / data.Total) * 100).toFixed(1)
+                          : '0'}%
+                      </div>
+                    </div>
+                    <div>
+                      <span className='text-muted-foreground text-xs'>Lookback</span>
+                      <div className='font-bold'>{submitted?.lookback ?? params.lookback}d</div>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+
+              {/* Ranked table */}
+              <Card className='overflow-hidden'>
+                <div className='px-4 py-2.5 border-b border-border/50'>
+                  <h3 className='text-sm font-medium'>
+                    Qualified Stocks
+                    <span className='ml-2 text-xs text-muted-foreground'>
+                      ({filteredStocks.length}{activeFilterCount > 0 ? ` of ${qualifiedAll.length}` : ''})
+                    </span>
+                  </h3>
+                </div>
+                <WatchlistTable
+                  stocks={filteredStocks}
+                  symbolLookup={symbolMap}
+                  onRowClick={handleRowClick}
+                />
+              </Card>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Detail drawer */}
