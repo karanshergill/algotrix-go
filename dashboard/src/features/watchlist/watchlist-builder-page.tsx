@@ -21,7 +21,7 @@ import { WatchlistDetailDrawer } from './watchlist-detail-drawer'
 import type { BuildParams } from './types'
 
 export function WatchlistBuilderPage() {
-  const [params, setParams] = useState<BuildParams>({ lookback: 30, fnoOnly: false })
+  const [params, setParams] = useState<BuildParams>({ lookback: 30, fnoOnly: false, madtvFloor: 1e9 })
   const [submitted, setSubmitted] = useState<BuildParams | null>(null)
   const [selectedSymbol, setSelectedSymbol] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -79,6 +79,23 @@ export function WatchlistBuilderPage() {
                 <SelectItem value='30'>30 days</SelectItem>
                 <SelectItem value='60'>60 days</SelectItem>
                 <SelectItem value='90'>90 days</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className='space-y-1'>
+            <Label className='text-xs'>MADTV Floor</Label>
+            <Select
+              value={String(params.madtvFloor)}
+              onValueChange={(v) => setParams((p) => ({ ...p, madtvFloor: Number(v) }))}
+            >
+              <SelectTrigger className='w-28 h-9'>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='100000000'>₹10 Cr</SelectItem>
+                <SelectItem value='250000000'>₹25 Cr</SelectItem>
+                <SelectItem value='500000000'>₹50 Cr</SelectItem>
+                <SelectItem value='1000000000'>₹100 Cr</SelectItem>
               </SelectContent>
             </Select>
           </div>

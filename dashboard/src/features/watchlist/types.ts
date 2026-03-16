@@ -60,4 +60,5 @@ export type ExplainResult = {
 export type BuildParams = {
   lookback: number
   fnoOnly: boolean
+  madtvFloor: number // in rupees (e.g. 1e9 = ₹100Cr)
 }

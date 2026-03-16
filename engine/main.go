@@ -330,7 +330,7 @@ func runWatchlist() {
 	var symbolFlag, csvPath string
 	lookback := 30
 	coverage := 1.0
-	madtvFloor := 1e9 // ₹10 Crore
+	madtvFloor := 1e9 // ₹100 Crore
 	jsonOutput := false
 	fnoOnly := false
 

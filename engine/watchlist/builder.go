@@ -19,7 +19,7 @@ type BuildConfig struct {
 	WilderPeriod int     // ATR Wilder's smoothing period (default 14)
 
 	// Hard gates.
-	MADTVFloor float64 // minimum MADTV in rupees to qualify (default 1e9 = ₹10Cr)
+	MADTVFloor float64 // minimum MADTV in rupees to qualify (default 1e9 = ₹100Cr)
 
 	// Scoring weights (must sum to 1.0).
 	WeightMADTV     float64 // default 0.20
@@ -41,7 +41,7 @@ func DefaultConfig() BuildConfig {
 		LookbackDays:      30,
 		MinCoverage:       1.0,
 		WilderPeriod:      14,
-		MADTVFloor:        1e9, // ₹10 Crore
+		MADTVFloor:        1e9, // ₹100 Crore
 		WeightMADTV:       0.20,
 		WeightAmihud:      0.20,
 		WeightATRPct:      0.20,
