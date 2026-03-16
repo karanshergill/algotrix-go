@@ -103,34 +103,55 @@ export function WatchlistBuilderPage() {
         <HeaderToolbar />
       </div>
 
+      {/* Top toolbar: Lookback + Build */}
+      <div className='flex items-center justify-between px-6 py-2.5 border-b border-border/50 shrink-0'>
+        <div className='flex items-center gap-3'>
+          <Label className='text-xs text-muted-foreground'>Lookback</Label>
+          <Select
+            value={String(params.lookback)}
+            onValueChange={(v) => setParams((p) => ({ ...p, lookback: Number(v) }))}
+          >
+            <SelectTrigger className='w-24 h-8 text-xs'>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='10'>10 days</SelectItem>
+              <SelectItem value='20'>20 days</SelectItem>
+              <SelectItem value='30'>30 days</SelectItem>
+              <SelectItem value='60'>60 days</SelectItem>
+              <SelectItem value='90'>90 days</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Button onClick={handleBuild} disabled={isFetching} className='h-8 px-5'>
+          {isFetching ? (
+            <>
+              <RefreshCw size={13} className='mr-1.5 animate-spin' />
+              Building…
+            </>
+          ) : (
+            'Build Watchlist'
+          )}
+        </Button>
+      </div>
+
       {/* Scrollable content */}
       <div className='flex-1 overflow-auto'>
         <div className='px-6 py-4 space-y-4'>
 
-          {/* Row 1: Universe Filters (Stage 1) + Build Button */}
-          <Card className='px-4 py-3'>
-            <div className='flex items-center justify-between gap-4 flex-wrap'>
+          {/* Unified config card: Stage 1 + Stage 2 */}
+          <Card className='overflow-hidden'>
+            {/* Stage 1: Universe Filters */}
+            <div className='px-4 py-3 bg-muted/30'>
+              <h3 className='text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2'>
+                Stage 1 · Universe Filters
+                <span className='ml-2 font-normal normal-case tracking-normal text-muted-foreground/50'>
+                  — defines the scoring pool
+                </span>
+              </h3>
               <div className='flex items-end gap-4 flex-wrap'>
                 <div className='space-y-0.5'>
-                  <Label className='text-[10px] uppercase tracking-wider text-muted-foreground'>Lookback</Label>
-                  <Select
-                    value={String(params.lookback)}
-                    onValueChange={(v) => setParams((p) => ({ ...p, lookback: Number(v) }))}
-                  >
-                    <SelectTrigger className='w-24 h-8 text-xs'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value='10'>10 days</SelectItem>
-                      <SelectItem value='20'>20 days</SelectItem>
-                      <SelectItem value='30'>30 days</SelectItem>
-                      <SelectItem value='60'>60 days</SelectItem>
-                      <SelectItem value='90'>90 days</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className='space-y-0.5'>
-                  <Label className='text-[10px] uppercase tracking-wider text-muted-foreground'>Min MADTV (₹ Cr)</Label>
+                  <Label className='text-[10px] text-muted-foreground'>Min MADTV (₹ Cr)</Label>
                   <div className='flex items-center gap-0.5'>
                     <Button
                       variant='outline'
@@ -163,42 +184,38 @@ export function WatchlistBuilderPage() {
                   <Label htmlFor='fno' className='text-xs'>FnO Only</Label>
                 </div>
               </div>
-              <Button onClick={handleBuild} disabled={isFetching} className='h-8 px-5'>
-                {isFetching ? (
-                  <>
-                    <RefreshCw size={13} className='mr-1.5 animate-spin' />
-                    Building…
-                  </>
-                ) : (
-                  'Build Watchlist'
-                )}
-              </Button>
             </div>
-            <p className='text-[9px] text-muted-foreground/50 mt-2'>
-              Stage 1 · Universe filters define the scoring pool. Changes recompute all scores and percentiles.
-            </p>
+
+            <div className='border-t border-border/40' />
+
+            {/* Stage 2: Scoring Weights + Metric Filters */}
+            <div className='px-4 py-3'>
+              <h3 className='text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3'>
+                Stage 2 · Scoring &amp; Filters
+                <span className='ml-2 font-normal normal-case tracking-normal text-muted-foreground/50'>
+                  — ranks and narrows the results
+                </span>
+              </h3>
+              <div className='grid grid-cols-1 lg:grid-cols-5 gap-4'>
+                {/* Weights: 2/5 */}
+                <div className='lg:col-span-2'>
+                  <WatchlistWeightSliders
+                    weights={params.weights}
+                    onChange={(w) => setParams((p) => ({ ...p, weights: w }))}
+                    defaults={engineDefaultWeights}
+                  />
+                </div>
+                {/* Filters: 3/5 */}
+                <div className='lg:col-span-3'>
+                  <WatchlistMetricFilters
+                    filters={metricFilters}
+                    onChange={setMetricFilters}
+                    stats={data?.Stats}
+                  />
+                </div>
+              </div>
+            </div>
           </Card>
-
-          {/* Row 2: Scoring Weights + Metric Filters — compact side by side */}
-          <div className='grid grid-cols-1 lg:grid-cols-5 gap-4'>
-            {/* Weights: 2 columns */}
-            <Card className='lg:col-span-2 p-4'>
-              <WatchlistWeightSliders
-                weights={params.weights}
-                onChange={(w) => setParams((p) => ({ ...p, weights: w }))}
-                defaults={engineDefaultWeights}
-              />
-            </Card>
-
-            {/* Metric Filters: 3 columns */}
-            <Card className='lg:col-span-3 p-4'>
-              <WatchlistMetricFilters
-                filters={metricFilters}
-                onChange={setMetricFilters}
-                stats={data?.Stats}
-              />
-            </Card>
-          </div>
 
           {/* Results */}
           {!submitted && !data && (
@@ -220,7 +237,6 @@ export function WatchlistBuilderPage() {
 
           {data && !isLoading && (
             <>
-              {/* Pipeline funnel */}
               <WatchlistFunnel
                 total={data.Total}
                 rejected={data.Rejected}
@@ -228,7 +244,6 @@ export function WatchlistBuilderPage() {
                 filtered={activeFilterCount > 0 ? filteredStocks.length : undefined}
               />
 
-              {/* Charts + Summary */}
               <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
                 <WatchlistScoreChart stocks={filteredStocks} />
                 <Card className='p-4'>
@@ -264,7 +279,6 @@ export function WatchlistBuilderPage() {
                 </Card>
               </div>
 
-              {/* Ranked table */}
               <Card className='overflow-hidden'>
                 <div className='px-4 py-2.5 border-b border-border/50'>
                   <h3 className='text-sm font-medium'>
@@ -285,7 +299,6 @@ export function WatchlistBuilderPage() {
         </div>
       </div>
 
-      {/* Detail drawer */}
       <WatchlistDetailDrawer
         symbol={selectedSymbol}
         lookback={submitted?.lookback ?? params.lookback}
