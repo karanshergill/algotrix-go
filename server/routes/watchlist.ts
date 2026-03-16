@@ -5,7 +5,7 @@ import path from 'node:path'
 import pool from '../db'
 
 const execFileAsync = promisify(execFile)
-const ENGINE_DIR = path.resolve(import.meta.dirname, '..', '..', 'engine')
+const ENGINE_DIR = path.resolve(__dirname, '..', '..', 'engine')
 const ENGINE_BIN = path.join(ENGINE_DIR, 'algotrix')
 
 const watchlist = new Hono()

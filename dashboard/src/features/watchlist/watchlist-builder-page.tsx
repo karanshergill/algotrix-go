@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { Crosshair, RefreshCw } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { Skeleton } from '@/components/ui/skeleton'
+import { SelectDropdown } from '@/components/select-dropdown'
 import { HeaderToolbar } from '@/components/layout/header-toolbar'
 import { useWatchlistBuild } from './use-watchlist-build'
 import { WatchlistFunnel } from './watchlist-funnel'
@@ -58,15 +59,19 @@ export function WatchlistBuilderPage() {
       <div className='px-6 py-4 border-b border-border/50 shrink-0'>
         <div className='flex items-end gap-4 flex-wrap'>
           <div className='space-y-1'>
-            <Label htmlFor='lookback' className='text-xs'>Lookback (days)</Label>
-            <Input
-              id='lookback'
-              type='number'
-              min={5}
-              max={252}
-              value={params.lookback}
-              onChange={(e) => setParams((p) => ({ ...p, lookback: Number(e.target.value) || 30 }))}
-              className='w-24 h-9'
+            <Label className='text-xs'>Lookback (days)</Label>
+            <SelectDropdown
+              isControlled
+              defaultValue={String(params.lookback)}
+              onValueChange={(v) => setParams((p) => ({ ...p, lookback: Number(v) }))}
+              items={[
+                { label: '10 days', value: '10' },
+                { label: '20 days', value: '20' },
+                { label: '30 days', value: '30' },
+                { label: '60 days', value: '60' },
+                { label: '90 days', value: '90' },
+              ]}
+              className='w-28 h-9'
             />
           </div>
           <div className='flex items-center gap-2 pb-1'>
@@ -102,10 +107,10 @@ export function WatchlistBuilderPage() {
           <div className='space-y-4'>
             <div className='flex gap-3'>
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className='h-20 w-36 bg-muted/40 rounded-lg animate-pulse' />
+                <Skeleton key={i} className='h-20 w-36 rounded-lg' />
               ))}
             </div>
-            <div className='h-64 bg-muted/40 rounded-lg animate-pulse' />
+            <Skeleton className='h-64 w-full rounded-lg' />
           </div>
         )}
 
