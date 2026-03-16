@@ -328,21 +328,29 @@ func runWatchlist() {
 	subCmd := os.Args[2]
 
 	// Quick subcommand: defaults — no DB needed.
+	// Returns raw slider-scale values (integers) matching frontend model.
 	if subCmd == "defaults" {
 		cfg := watchlist.DefaultConfig()
+		// Convert normalized weights (0.10, 0.18...) to raw slider values (10, 18...)
+		// by scaling to sum to 100.
+		total := cfg.WeightMADTV + cfg.WeightAmihud + cfg.WeightTradeSize + cfg.WeightATRPct +
+			cfg.WeightADRPct + cfg.WeightRangeEff + cfg.WeightParkinson + cfg.WeightMomentum
+		scale := func(w float64) float64 {
+			return math.Round(w / total * 100)
+		}
 		out := map[string]interface{}{
 			"lookback":  cfg.LookbackDays,
 			"madtvFloor": cfg.MADTVFloor,
 			"fnoOnly":   false,
 			"weights": map[string]float64{
-				"madtv":     cfg.WeightMADTV,
-				"amihud":    cfg.WeightAmihud,
-				"tradeSize": cfg.WeightTradeSize,
-				"atrPct":    cfg.WeightATRPct,
-				"adrPct":    cfg.WeightADRPct,
-				"rangeEff":  cfg.WeightRangeEff,
-				"parkinson": cfg.WeightParkinson,
-				"momentum":  cfg.WeightMomentum,
+				"madtv":     scale(cfg.WeightMADTV),
+				"amihud":    scale(cfg.WeightAmihud),
+				"tradeSize": scale(cfg.WeightTradeSize),
+				"atrPct":    scale(cfg.WeightATRPct),
+				"adrPct":    scale(cfg.WeightADRPct),
+				"rangeEff":  scale(cfg.WeightRangeEff),
+				"parkinson": scale(cfg.WeightParkinson),
+				"momentum":  scale(cfg.WeightMomentum),
 			},
 		}
 		enc := json.NewEncoder(os.Stdout)
