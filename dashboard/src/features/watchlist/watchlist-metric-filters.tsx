@@ -115,7 +115,7 @@ export function applyMetricFilters(
     const f = filters
     if (f.minADRPct && s.ADRPct < Number(f.minADRPct)) return false
     if (f.minRangeEff && s.RangeEff < Number(f.minRangeEff)) return false
-    if (f.minMomentum && Math.abs(s.Momentum5D) < Number(f.minMomentum)) return false
+    if (f.minMomentum && Math.abs(s.Momentum5D) < Number(f.minMomentum) / 100) return false
     if (f.minParkinson && s.Parkinson < Number(f.minParkinson)) return false
     if (f.maxAmihud && s.Amihud > Number(f.maxAmihud)) return false
     if (f.minTradeSize && s.TradeSize < Number(f.minTradeSize)) return false
