@@ -13,7 +13,7 @@ const FILTER_DEFS: {
 }[] = [
   { key: 'minADRPct', label: 'ADR%', dir: 'min', unit: '%', placeholder: 'e.g. 3.0' },
   { key: 'minRangeEff', label: 'Range Eff', dir: 'min', unit: '', placeholder: 'e.g. 0.35' },
-  { key: 'minMomentum', label: 'Momentum', dir: 'min', unit: '%', placeholder: 'e.g. -5' },
+  { key: 'minMomentum', label: '|Momentum|', dir: 'min', unit: '%', placeholder: 'e.g. 3' },
   { key: 'minParkinson', label: 'Parkinson', dir: 'min', unit: '', placeholder: 'e.g. 0.02' },
   { key: 'maxAmihud', label: 'Amihud', dir: 'max', unit: '', placeholder: 'e.g. 1e-10' },
   { key: 'minTradeSize', label: 'Trade Size', dir: 'min', unit: '₹', placeholder: 'e.g. 30000' },
@@ -101,7 +101,7 @@ export function applyMetricFilters(
     const f = filters
     if (f.minADRPct && s.ADRPct < Number(f.minADRPct)) return false
     if (f.minRangeEff && s.RangeEff < Number(f.minRangeEff)) return false
-    if (f.minMomentum && s.Momentum5D < Number(f.minMomentum)) return false
+    if (f.minMomentum && Math.abs(s.Momentum5D) < Number(f.minMomentum)) return false
     if (f.minParkinson && s.Parkinson < Number(f.minParkinson)) return false
     if (f.maxAmihud && s.Amihud > Number(f.maxAmihud)) return false
     if (f.minTradeSize && s.TradeSize < Number(f.minTradeSize)) return false
