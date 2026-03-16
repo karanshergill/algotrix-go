@@ -5,12 +5,18 @@ export type StockScore = {
   ATRPct: number
   Parkinson: number
   TradeSize: number
+  ADRPct: number
+  RangeEff: number
+  Momentum5D: number
   TradingDays: number
   PctMADTV: number
   PctAmihud: number
   PctATRPct: number
   PctParkinson: number
   PctTradeSize: number
+  PctADRPct: number
+  PctRangeEff: number
+  PctMomentum: number
   Composite: number
 }
 
@@ -42,6 +48,9 @@ export type ExplainResult = {
     atrPct: number
     parkinson: number
     tradeSize: number
+    adrPct: number
+    rangeEff: number
+    momentum5d: number
     tradingDays: number
   }
   percentiles?: {
@@ -50,6 +59,9 @@ export type ExplainResult = {
     pctATRPct: number
     pctParkinson: number
     pctTradeSize: number
+    pctADRPct: number
+    pctRangeEff: number
+    pctMomentum: number
   }
   composite?: number
   breakdown?: BreakdownItem[]

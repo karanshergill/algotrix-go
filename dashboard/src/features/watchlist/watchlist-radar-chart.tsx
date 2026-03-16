@@ -14,6 +14,9 @@ type Props = {
     pctATRPct: number
     pctParkinson: number
     pctTradeSize: number
+    pctADRPct: number
+    pctRangeEff: number
+    pctMomentum: number
   }
 }
 
@@ -24,6 +27,9 @@ export function WatchlistRadarChart({ percentiles }: Props) {
     { metric: 'ATR%', value: percentiles.pctATRPct },
     { metric: 'Parkinson', value: percentiles.pctParkinson },
     { metric: 'TradeSize', value: percentiles.pctTradeSize },
+    { metric: 'ADR%', value: percentiles.pctADRPct },
+    { metric: 'RangeEff', value: percentiles.pctRangeEff },
+    { metric: 'Momentum', value: percentiles.pctMomentum },
   ]
 
   return (

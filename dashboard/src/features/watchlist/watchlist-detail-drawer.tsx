@@ -107,6 +107,9 @@ export function WatchlistDetailDrawer({ symbol, lookback, open, onOpenChange }: 
                 <MetricRow label='ATR%' value={`${data.raw.atrPct.toFixed(2)}%`} />
                 <MetricRow label='Parkinson' value={`${(data.raw.parkinson * 100).toFixed(2)}%`} />
                 <MetricRow label='Avg Trade Size' value={`₹${data.raw.tradeSize.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
+                <MetricRow label='ADR%' value={`${data.raw.adrPct.toFixed(2)}%`} />
+                <MetricRow label='Range Efficiency' value={data.raw.rangeEff.toFixed(3)} />
+                <MetricRow label='Momentum 5D' value={`${(data.raw.momentum5d * 100).toFixed(2)}%`} />
                 <MetricRow label='Trading Days' value={String(data.raw.tradingDays)} />
               </div>
             </Card>

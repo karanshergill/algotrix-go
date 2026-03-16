@@ -110,6 +110,24 @@ function buildColumns(symbolLookup: Record<string, string>): ColumnDef<StockScor
       sortingFn: 'basic',
     },
     {
+      accessorKey: 'PctADRPct',
+      header: ({ column }) => <DataTableColumnHeader column={column} title='ADR%P' />,
+      cell: ({ row }) => <PctCell value={row.getValue('PctADRPct')} />,
+      sortingFn: 'basic',
+    },
+    {
+      accessorKey: 'PctRangeEff',
+      header: ({ column }) => <DataTableColumnHeader column={column} title='RngEf%' />,
+      cell: ({ row }) => <PctCell value={row.getValue('PctRangeEff')} />,
+      sortingFn: 'basic',
+    },
+    {
+      accessorKey: 'PctMomentum',
+      header: ({ column }) => <DataTableColumnHeader column={column} title='Mom%' />,
+      cell: ({ row }) => <PctCell value={row.getValue('PctMomentum')} />,
+      sortingFn: 'basic',
+    },
+    {
       accessorKey: 'TradingDays',
       header: ({ column }) => <DataTableColumnHeader column={column} title='Days' />,
       cell: ({ row }) => (
