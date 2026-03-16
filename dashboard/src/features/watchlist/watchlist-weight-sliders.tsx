@@ -44,7 +44,12 @@ export function WatchlistWeightSliders({ weights, onChange }: Props) {
   return (
     <div className='space-y-4'>
       <div className='flex items-center justify-between'>
-        <h4 className='text-xs font-medium text-muted-foreground'>Scoring Weights</h4>
+        <div>
+          <h4 className='text-xs font-medium text-muted-foreground'>Scoring Weights</h4>
+          <p className='text-[10px] text-muted-foreground/60 mt-0.5'>
+            Weights auto-normalize to 100%. Changing one slider changes the effective % of all metrics.
+          </p>
+        </div>
         <Button
           variant='ghost'
           size='sm'
