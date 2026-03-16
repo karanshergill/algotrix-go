@@ -40,7 +40,7 @@ export function WatchlistMetricFilters({ filters, onChange, stats }: Props) {
       <div className='flex items-center justify-between'>
         <div>
           <h4 className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
-            Metric Filters
+            Stage 2 · Metric Filters
             {activeCount > 0 && (
               <span className='ml-1.5 text-[10px] normal-case tracking-normal bg-primary/15 text-primary px-1.5 py-0.5 rounded-full'>
                 {activeCount} active
@@ -48,7 +48,7 @@ export function WatchlistMetricFilters({ filters, onChange, stats }: Props) {
             )}
           </h4>
           <p className='text-[10px] text-muted-foreground/60 mt-0.5'>
-            Narrow results by raw metric values. Grayed hints show today's 25th percentile — stocks below this are in the bottom quartile. Blank = no filter.
+            Narrows the ranked results without affecting scores. Hints show today's 25th percentile — below this = bottom quartile. Blank = no filter.
           </p>
         </div>
         {activeCount > 0 && (

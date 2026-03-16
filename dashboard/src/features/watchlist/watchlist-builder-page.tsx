@@ -107,11 +107,14 @@ export function WatchlistBuilderPage() {
       {/* Configuration Panel — unified card */}
       <div className='px-6 py-4 border-b border-border/50 shrink-0'>
         <Card className='p-5'>
-          {/* Section 1: Universe Controls */}
+          {/* Stage 1: Universe Filters — defines the scoring pool */}
           <div className='mb-5'>
-            <h3 className='text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3'>
-              Universe
+            <h3 className='text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1'>
+              Stage 1 · Universe Filters
             </h3>
+            <p className='text-[10px] text-muted-foreground/60 mb-3'>
+              Defines which stocks enter the scoring engine. Changes here recompute all scores and percentiles.
+            </p>
             <div className='flex items-end gap-4 flex-wrap'>
               <div className='space-y-1'>
                 <Label className='text-xs'>Lookback</Label>
@@ -169,7 +172,7 @@ export function WatchlistBuilderPage() {
 
           <div className='border-t border-border/40 my-4' />
 
-          {/* Section 2: Scoring Weights + Metric Filters side by side */}
+          {/* Stage 2: Scoring + Metric Filters side by side */}
           <div className='grid grid-cols-1 lg:grid-cols-2 gap-5'>
             {/* Scoring Weights */}
             <div>
