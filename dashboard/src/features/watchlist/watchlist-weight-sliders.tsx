@@ -9,18 +9,18 @@ type Props = {
   defaults?: MetricWeights
 }
 
-const METRIC_LABELS: { key: keyof MetricWeights; label: string; group: string }[] = [
-  { key: 'madtv', label: 'MADTV', group: 'Tradability' },
-  { key: 'amihud', label: 'Amihud', group: 'Tradability' },
-  { key: 'tradeSize', label: 'Trade Size', group: 'Tradability' },
-  { key: 'atrPct', label: 'ATR%', group: 'Tradability' },
-  { key: 'adrPct', label: 'ADR%', group: 'Opportunity' },
-  { key: 'rangeEff', label: 'Range Eff', group: 'Opportunity' },
-  { key: 'parkinson', label: 'Parkinson', group: 'Opportunity' },
-  { key: 'momentum', label: 'Momentum', group: 'Opportunity' },
+const METRICS: { key: keyof MetricWeights; label: string; group: 'T' | 'O' }[] = [
+  { key: 'madtv', label: 'MADTV', group: 'T' },
+  { key: 'amihud', label: 'Amihud', group: 'T' },
+  { key: 'tradeSize', label: 'Trade Size', group: 'T' },
+  { key: 'atrPct', label: 'ATR%', group: 'T' },
+  { key: 'adrPct', label: 'ADR%', group: 'O' },
+  { key: 'rangeEff', label: 'Range Eff', group: 'O' },
+  { key: 'parkinson', label: 'Parkinson', group: 'O' },
+  { key: 'momentum', label: 'Momentum', group: 'O' },
 ]
 
-function normalizedPct(value: number, total: number): string {
+function pct(value: number, total: number): string {
   if (total === 0) return '0%'
   return `${((value / total) * 100).toFixed(0)}%`
 }
@@ -29,103 +29,50 @@ export function WatchlistWeightSliders({ weights, onChange, defaults }: Props) {
   const total = Object.values(weights).reduce((a, b) => a + b, 0)
   const resetTarget = defaults ?? DEFAULT_WEIGHTS
 
-  const handleChange = (key: keyof MetricWeights, value: number) => {
-    onChange({ ...weights, [key]: value })
-  }
-
-  const handleReset = () => {
-    onChange({ ...resetTarget })
-  }
-
-  const tradability = METRIC_LABELS.filter((m) => m.group === 'Tradability')
-  const opportunity = METRIC_LABELS.filter((m) => m.group === 'Opportunity')
-
-  const tradabilityTotal = tradability.reduce((sum, m) => sum + weights[m.key], 0)
-  const opportunityTotal = opportunity.reduce((sum, m) => sum + weights[m.key], 0)
+  const tradabilitySum = METRICS.filter(m => m.group === 'T').reduce((s, m) => s + weights[m.key], 0)
+  const opportunitySum = METRICS.filter(m => m.group === 'O').reduce((s, m) => s + weights[m.key], 0)
 
   return (
-    <div className='space-y-3'>
+    <div className='space-y-2'>
       <div className='flex items-center justify-between'>
-        <div>
-          <h4 className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>Scoring Weights</h4>
-          <p className='text-[10px] text-muted-foreground/60 mt-0.5'>
-            How much each metric influences the composite score. Auto-normalizes to 100%.
-          </p>
+        <div className='flex items-center gap-3'>
+          <h4 className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
+            Scoring Weights
+          </h4>
+          <span className='text-[10px] text-muted-foreground/50'>
+            Tradability {pct(tradabilitySum, total)} · Opportunity {pct(opportunitySum, total)}
+          </span>
         </div>
         <Button
           variant='ghost'
           size='sm'
-          className='h-6 text-xs gap-1'
-          onClick={handleReset}
+          className='h-5 text-[10px] gap-1 px-2'
+          onClick={() => onChange({ ...resetTarget })}
         >
-          <RotateCcw size={12} />
+          <RotateCcw size={10} />
           Reset
         </Button>
       </div>
 
-      {/* Tradability group */}
-      <div>
-        <div className='text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-2'>
-          Tradability ({normalizedPct(tradabilityTotal, total)})
-        </div>
-        <div className='space-y-2'>
-          {tradability.map((m) => (
-            <SliderRow
-              key={m.key}
-              label={m.label}
-              value={weights[m.key]}
-              normalizedPct={normalizedPct(weights[m.key], total)}
-              onChange={(v) => handleChange(m.key, v)}
+      {/* 4-column grid of compact sliders */}
+      <div className='grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5'>
+        {METRICS.map((m) => (
+          <div key={m.key} className='flex items-center gap-2'>
+            <span className='text-[10px] text-muted-foreground w-16 shrink-0 truncate'>{m.label}</span>
+            <Slider
+              value={[weights[m.key]]}
+              min={0}
+              max={30}
+              step={1}
+              onValueChange={([v]) => onChange({ ...weights, [m.key]: v })}
+              className='flex-1 min-w-0'
             />
-          ))}
-        </div>
+            <span className='text-[10px] tabular-nums text-muted-foreground w-7 text-right shrink-0'>
+              {pct(weights[m.key], total)}
+            </span>
+          </div>
+        ))}
       </div>
-
-      {/* Opportunity group */}
-      <div>
-        <div className='text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-1.5'>
-          Opportunity ({normalizedPct(opportunityTotal, total)})
-        </div>
-        <div className='space-y-2'>
-          {opportunity.map((m) => (
-            <SliderRow
-              key={m.key}
-              label={m.label}
-              value={weights[m.key]}
-              normalizedPct={normalizedPct(weights[m.key], total)}
-              onChange={(v) => handleChange(m.key, v)}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function SliderRow({
-  label,
-  value,
-  normalizedPct,
-  onChange,
-}: {
-  label: string
-  value: number
-  normalizedPct: string
-  onChange: (value: number) => void
-}) {
-  return (
-    <div className='flex items-center gap-3'>
-      <span className='text-xs w-20 shrink-0'>{label}</span>
-      <Slider
-        value={[value]}
-        min={0}
-        max={30}
-        step={1}
-        onValueChange={([v]) => onChange(v)}
-        className='flex-1'
-      />
-      <span className='text-xs tabular-nums w-6 text-right font-medium'>{value}</span>
-      <span className='text-[10px] tabular-nums text-muted-foreground w-10 text-right'>→ {normalizedPct}</span>
     </div>
   )
 }

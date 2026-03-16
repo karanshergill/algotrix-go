@@ -103,129 +103,108 @@ export function WatchlistBuilderPage() {
         <HeaderToolbar />
       </div>
 
-      {/* Top toolbar: Lookback + Build */}
-      <div className='flex items-center justify-between px-6 py-2.5 border-b border-border/50 shrink-0'>
-        <div className='flex items-center gap-3'>
-          <Label className='text-xs text-muted-foreground'>Lookback</Label>
-          <Select
-            value={String(params.lookback)}
-            onValueChange={(v) => setParams((p) => ({ ...p, lookback: Number(v) }))}
-          >
-            <SelectTrigger className='w-24 h-8 text-xs'>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value='10'>10 days</SelectItem>
-              <SelectItem value='20'>20 days</SelectItem>
-              <SelectItem value='30'>30 days</SelectItem>
-              <SelectItem value='60'>60 days</SelectItem>
-              <SelectItem value='90'>90 days</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <Button onClick={handleBuild} disabled={isFetching} className='h-8 px-5'>
-          {isFetching ? (
-            <>
-              <RefreshCw size={13} className='mr-1.5 animate-spin' />
-              Building…
-            </>
-          ) : (
-            'Build Watchlist'
-          )}
-        </Button>
-      </div>
-
       {/* Scrollable content */}
       <div className='flex-1 overflow-auto'>
-        <div className='px-6 py-4 space-y-4'>
+        <div className='px-6 py-4 space-y-3'>
 
-          {/* Unified config card: Stage 1 + Stage 2 */}
+          {/* Config card — all controls in one place */}
           <Card className='overflow-hidden'>
-            {/* Stage 1: Universe Filters */}
-            <div className='px-4 py-3 bg-muted/30'>
-              <h3 className='text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2'>
-                Stage 1 · Universe Filters
-                <span className='ml-2 font-normal normal-case tracking-normal text-muted-foreground/50'>
-                  — defines the scoring pool
-                </span>
-              </h3>
-              <div className='flex items-end gap-4 flex-wrap'>
-                <div className='space-y-0.5'>
-                  <Label className='text-[10px] text-muted-foreground'>Min MADTV (₹ Cr)</Label>
+            {/* Row 1: All universe controls + Build button in one compact bar */}
+            <div className='flex items-center justify-between gap-4 px-4 py-2.5 bg-muted/30 flex-wrap'>
+              <div className='flex items-center gap-5 flex-wrap'>
+                <div className='flex items-center gap-2'>
+                  <Label className='text-[10px] uppercase tracking-wider text-muted-foreground/70'>Lookback</Label>
+                  <Select
+                    value={String(params.lookback)}
+                    onValueChange={(v) => setParams((p) => ({ ...p, lookback: Number(v) }))}
+                  >
+                    <SelectTrigger className='w-24 h-7 text-xs'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='10'>10 days</SelectItem>
+                      <SelectItem value='20'>20 days</SelectItem>
+                      <SelectItem value='30'>30 days</SelectItem>
+                      <SelectItem value='60'>60 days</SelectItem>
+                      <SelectItem value='90'>90 days</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className='flex items-center gap-2'>
+                  <Label className='text-[10px] uppercase tracking-wider text-muted-foreground/70'>Min MADTV</Label>
                   <div className='flex items-center gap-0.5'>
                     <Button
                       variant='outline'
                       size='icon'
-                      className='h-8 w-8 shrink-0'
+                      className='h-7 w-7 shrink-0'
                       disabled={params.madtvFloor <= 0}
                       onClick={() => setParams((p) => ({ ...p, madtvFloor: Math.max(0, p.madtvFloor - 5e7) }))}
                     >
-                      <span className='text-sm'>−</span>
+                      <span className='text-xs'>−</span>
                     </Button>
-                    <div className='w-16 h-8 flex items-center justify-center rounded-md border border-input bg-background text-xs tabular-nums font-medium'>
-                      {params.madtvFloor / 1e7}
+                    <div className='w-14 h-7 flex items-center justify-center rounded-md border border-input bg-background text-xs tabular-nums font-medium'>
+                      ₹{params.madtvFloor / 1e7}Cr
                     </div>
                     <Button
                       variant='outline'
                       size='icon'
-                      className='h-8 w-8 shrink-0'
+                      className='h-7 w-7 shrink-0'
                       onClick={() => setParams((p) => ({ ...p, madtvFloor: p.madtvFloor + 5e7 }))}
                     >
-                      <span className='text-sm'>+</span>
+                      <span className='text-xs'>+</span>
                     </Button>
                   </div>
                 </div>
-                <div className='flex items-center gap-2 h-8'>
+                <div className='flex items-center gap-1.5'>
                   <Switch
                     id='fno'
                     checked={params.fnoOnly}
                     onCheckedChange={(v) => setParams((p) => ({ ...p, fnoOnly: v }))}
+                    className='scale-90'
                   />
                   <Label htmlFor='fno' className='text-xs'>FnO Only</Label>
                 </div>
               </div>
+              <Button onClick={handleBuild} disabled={isFetching} size='sm' className='h-7 px-4'>
+                {isFetching ? (
+                  <>
+                    <RefreshCw size={12} className='mr-1.5 animate-spin' />
+                    Building…
+                  </>
+                ) : (
+                  'Build Watchlist'
+                )}
+              </Button>
             </div>
 
-            <div className='border-t border-border/40' />
+            {/* Row 2: Scoring Weights — full width, compact grid */}
+            <div className='px-4 py-3 border-t border-border/30'>
+              <WatchlistWeightSliders
+                weights={params.weights}
+                onChange={(w) => setParams((p) => ({ ...p, weights: w }))}
+                defaults={engineDefaultWeights}
+              />
+            </div>
 
-            {/* Stage 2: Scoring Weights + Metric Filters */}
-            <div className='px-4 py-3'>
-              <h3 className='text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3'>
-                Stage 2 · Scoring &amp; Filters
-                <span className='ml-2 font-normal normal-case tracking-normal text-muted-foreground/50'>
-                  — ranks and narrows the results
-                </span>
-              </h3>
-              <div className='grid grid-cols-1 lg:grid-cols-5 gap-4'>
-                {/* Weights: 2/5 */}
-                <div className='lg:col-span-2'>
-                  <WatchlistWeightSliders
-                    weights={params.weights}
-                    onChange={(w) => setParams((p) => ({ ...p, weights: w }))}
-                    defaults={engineDefaultWeights}
-                  />
-                </div>
-                {/* Filters: 3/5 */}
-                <div className='lg:col-span-3'>
-                  <WatchlistMetricFilters
-                    filters={metricFilters}
-                    onChange={setMetricFilters}
-                    stats={data?.Stats}
-                  />
-                </div>
-              </div>
+            {/* Row 3: Metric Filters — full width */}
+            <div className='px-4 py-3 border-t border-border/30'>
+              <WatchlistMetricFilters
+                filters={metricFilters}
+                onChange={setMetricFilters}
+                stats={data?.Stats}
+              />
             </div>
           </Card>
 
           {/* Results */}
           {!submitted && !data && (
-            <div className='flex items-center justify-center h-32 text-muted-foreground text-sm'>
-              Configure parameters and click "Build Watchlist" to start
+            <div className='flex items-center justify-center h-24 text-muted-foreground text-sm'>
+              Configure parameters and click "Build Watchlist"
             </div>
           )}
 
           {isLoading && (
-            <div className='space-y-4'>
+            <div className='space-y-3'>
               <div className='flex gap-3'>
                 {Array.from({ length: 3 }).map((_, i) => (
                   <Skeleton key={i} className='h-16 w-32 rounded-lg' />
@@ -244,7 +223,7 @@ export function WatchlistBuilderPage() {
                 filtered={activeFilterCount > 0 ? filteredStocks.length : undefined}
               />
 
-              <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
+              <div className='grid grid-cols-1 lg:grid-cols-2 gap-3'>
                 <WatchlistScoreChart stocks={filteredStocks} />
                 <Card className='p-4'>
                   <h3 className='text-sm font-medium mb-2'>Summary</h3>
