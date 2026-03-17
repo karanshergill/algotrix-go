@@ -13,12 +13,12 @@ import (
 )
 
 // checkDataFreshness verifies that bhavcopy data is not stale.
-// It checks the latest date in the DB against the current date,
-// accounting for weekends (Sat/Sun are not trading days).
+// Uses the calendar table (which knows weekends AND market holidays)
+// to determine the most recent expected trading day.
 // Returns an error if data is more than 1 trading day old.
 func checkDataFreshness(db *sql.DB) error {
-	var latestDate time.Time
-	err := db.QueryRow(`SELECT MAX(date) FROM nse_cm_bhavcopy`).Scan(&latestDate)
+	var latestBhavcopy time.Time
+	err := db.QueryRow(`SELECT MAX(date) FROM nse_cm_bhavcopy`).Scan(&latestBhavcopy)
 	if err != nil {
 		return fmt.Errorf("checking data freshness: %w", err)
 	}
@@ -26,52 +26,64 @@ func checkDataFreshness(db *sql.DB) error {
 	// IST timezone
 	ist, _ := time.LoadLocation("Asia/Kolkata")
 	now := time.Now().In(ist)
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, ist)
+	today := now.Format("2006-01-02")
 
-	// Walk backwards from today to find the most recent expected trading day.
-	// If it's before 18:30 IST, the latest expected data is yesterday's (or Friday's).
-	// If it's after 18:30 IST, today's data should be available.
+	// Use the calendar table to find the most recent trading day.
+	// If before 18:30 IST, today's bhavcopy isn't available yet — look for the
+	// most recent trading day strictly before today.
+	// If after 18:30 IST, today's data should be available — include today.
 	cutoff := time.Date(now.Year(), now.Month(), now.Day(), 18, 30, 0, 0, ist)
-	expectedDate := today
+
+	var expectedDate time.Time
 	if now.Before(cutoff) {
-		// Today's data not yet available, step back one day
-		expectedDate = today.AddDate(0, 0, -1)
+		// Today's data not yet available
+		err = db.QueryRow(
+			`SELECT date FROM calendar
+			 WHERE is_trading_day = true AND date < $1::date
+			 ORDER BY date DESC LIMIT 1`, today,
+		).Scan(&expectedDate)
+	} else {
+		// Today's data should be available
+		err = db.QueryRow(
+			`SELECT date FROM calendar
+			 WHERE is_trading_day = true AND date <= $1::date
+			 ORDER BY date DESC LIMIT 1`, today,
+		).Scan(&expectedDate)
+	}
+	if err != nil {
+		// Calendar table might not exist or be empty — fall back to warning
+		log.Printf("WARNING: could not query calendar table for freshness check: %v", err)
+		return nil
 	}
 
-	// Skip weekends backwards to find the nearest weekday
-	for expectedDate.Weekday() == time.Saturday || expectedDate.Weekday() == time.Sunday {
-		expectedDate = expectedDate.AddDate(0, 0, -1)
-	}
+	// Count trading days between latest bhavcopy and expected date (exclusive of latest, inclusive of expected)
+	latestStr := latestBhavcopy.Format("2006-01-02")
+	expectedStr := expectedDate.Format("2006-01-02")
 
-	// Compare: latest DB date vs expected date
-	latestDateNorm := time.Date(latestDate.Year(), latestDate.Month(), latestDate.Day(), 0, 0, 0, 0, ist)
-
-	// Allow 1 trading day gap (for holidays we can't predict)
-	// Count trading days between latestDate and expectedDate
-	gap := 0
-	d := latestDateNorm.AddDate(0, 0, 1)
-	for !d.After(expectedDate) {
-		if d.Weekday() != time.Saturday && d.Weekday() != time.Sunday {
-			gap++
-		}
-		d = d.AddDate(0, 0, 1)
+	var gap int
+	err = db.QueryRow(
+		`SELECT COUNT(*) FROM calendar
+		 WHERE is_trading_day = true
+		   AND date > $1::date
+		   AND date <= $2::date`,
+		latestStr, expectedStr,
+	).Scan(&gap)
+	if err != nil {
+		log.Printf("WARNING: could not count trading day gap: %v", err)
+		return nil
 	}
 
 	if gap > 1 {
 		return fmt.Errorf(
 			"STALE DATA: latest bhavcopy is %s (%d trading days behind expected %s). "+
 				"Run 'bhavcopy fetch' to update before building",
-			latestDate.Format("2006-01-02"),
-			gap,
-			expectedDate.Format("2006-01-02"),
+			latestStr, gap, expectedStr,
 		)
 	}
 
 	if gap == 1 {
-		log.Printf("WARNING: bhavcopy data is 1 trading day behind (latest: %s, expected: %s). "+
-			"This may be a market holiday. Proceeding with build.",
-			latestDate.Format("2006-01-02"),
-			expectedDate.Format("2006-01-02"),
+		log.Printf("WARNING: bhavcopy data is 1 trading day behind (latest: %s, expected: %s). Proceeding.",
+			latestStr, expectedStr,
 		)
 	}
 
