@@ -155,7 +155,7 @@ backtest.get('/', async (c) => {
   return c.json(result.rows)
 })
 
-// GET /api/backtests/:id — single run with date results
+// GET /api/backtests/:id — single run with date results + picks
 backtest.get('/:id', async (c) => {
   const id = c.req.param('id')
 
@@ -172,9 +172,56 @@ backtest.get('/:id', async (c) => {
     [id]
   )
 
+  // Build symbol lookup once (isin → symbol name)
+  const symbolRows = await pool.query(
+    `SELECT isin, symbol FROM symbols WHERE status = 'active'`
+  )
+  const symbolMap = new Map<string, string>(
+    symbolRows.rows.map((r: { isin: string; symbol: string }) => [r.isin, r.symbol])
+  )
+
+  // Fetch all picks for this run's date results in one query
+  const dateResultIds = dateResults.rows.map((r: { id: number }) => r.id)
+  let picksMap = new Map<number, unknown[]>()
+
+  if (dateResultIds.length > 0) {
+    const picksResult = await pool.query(
+      `SELECT date_result_id, isin, rank, score,
+              open_price, high_price, low_price, close_price,
+              max_opp, oc_return
+       FROM backtest_picks
+       WHERE date_result_id = ANY($1)
+       ORDER BY date_result_id, rank ASC`,
+      [dateResultIds]
+    )
+
+    for (const pick of picksResult.rows) {
+      const picks = picksMap.get(pick.date_result_id) ?? []
+      picks.push({
+        symbol: symbolMap.get(pick.isin) ?? pick.isin,
+        isin: pick.isin,
+        rank: pick.rank,
+        score: pick.score,
+        open_price: pick.open_price,
+        high_price: pick.high_price,
+        low_price: pick.low_price,
+        close_price: pick.close_price,
+        max_opp: pick.max_opp,
+        oc_return: pick.oc_return,
+      })
+      picksMap.set(pick.date_result_id, picks)
+    }
+  }
+
+  // Attach picks to each date result
+  const dateResultsWithPicks = dateResults.rows.map((r: { id: number }) => ({
+    ...r,
+    picks: picksMap.get(r.id) ?? [],
+  }))
+
   return c.json({
     ...runResult.rows[0],
-    date_results: dateResults.rows,
+    date_results: dateResultsWithPicks,
   })
 })
 

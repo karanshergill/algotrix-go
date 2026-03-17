@@ -22,6 +22,19 @@ export type HorizonSummary = {
   total_count: number
 }
 
+export type Pick = {
+  symbol: string
+  isin: string
+  rank: number
+  score: number
+  open_price: number
+  high_price: number
+  low_price: number
+  close_price: number
+  max_opp: number
+  oc_return: number
+}
+
 export type DateResult = {
   id: number
   build_date: string
@@ -36,6 +49,7 @@ export type DateResult = {
     nifty_max_opp: number
     nifty_range: number
   }
+  picks: Pick[]
 }
 
 export type BacktestRunDetail = BacktestRun & {
