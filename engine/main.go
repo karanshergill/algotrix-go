@@ -831,6 +831,7 @@ func fetchFnOISINs(db *sql.DB) (map[string]bool, error) {
 func runBacktest() {
 	cfg := watchlist.DefaultBacktestConfig()
 	jsonOutput := false
+	var minMcapCr, maxMcapCr float64
 
 	for i, arg := range os.Args {
 		switch arg {
@@ -842,10 +843,22 @@ func runBacktest() {
 			if i+1 < len(os.Args) {
 				if v, err := strconv.Atoi(os.Args[i+1]); err == nil { cfg.StepDays = v }
 			}
+		case "--min-mcap":
+			if i+1 < len(os.Args) {
+				if v, err := strconv.ParseFloat(os.Args[i+1], 64); err == nil { minMcapCr = v }
+			}
+		case "--max-mcap":
+			if i+1 < len(os.Args) {
+				if v, err := strconv.ParseFloat(os.Args[i+1], 64); err == nil { maxMcapCr = v }
+			}
 		case "--json":
 			jsonOutput = true
 		}
 	}
+
+	// Convert crores to rupees (1 Cr = 1e7).
+	cfg.BuildConfig.MinMarketCap = minMcapCr * 1e7
+	cfg.BuildConfig.MaxMarketCap = maxMcapCr * 1e7
 
 	// DB connection.
 	dbCfg, err := conns.LoadDBConfig("db/conns/db.yaml")

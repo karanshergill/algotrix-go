@@ -54,26 +54,30 @@ backtest.post('/run', async (c) => {
   const body = await c.req.json<{
     type?: string
     name?: string
-    config?: { top_n?: number; step?: number }
+    config?: { top_n?: number; step?: number; min_mcap?: number; max_mcap?: number }
   }>()
 
   const type = body.type ?? 'builder'
   const name = body.name ?? `Builder Backtest`
   const topN = body.config?.top_n ?? 25
   const step = body.config?.step ?? 1
+  const minMcap = body.config?.min_mcap ?? 0
+  const maxMcap = body.config?.max_mcap ?? 0
 
   // Create run record
   const runResult = await pool.query(
     `INSERT INTO backtest_runs (type, name, config, status, created_by)
      VALUES ($1, $2, $3, 'running', 'manual')
      RETURNING id, started_at`,
-    [type, name, JSON.stringify({ top_n: topN, step })]
+    [type, name, JSON.stringify({ top_n: topN, step, min_mcap: minMcap, max_mcap: maxMcap })]
   )
   const runId = runResult.rows[0].id
 
   try {
     // Run engine
     const args = ['backtest', '--json', '--top', String(topN), '--step', String(step)]
+    if (minMcap > 0) args.push('--min-mcap', String(minMcap))
+    if (maxMcap > 0) args.push('--max-mcap', String(maxMcap))
     const { stdout } = await execFileAsync(ENGINE_BIN, args, {
       cwd: ENGINE_DIR,
       timeout: 300_000,

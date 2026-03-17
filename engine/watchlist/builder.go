@@ -98,7 +98,9 @@ type BuildConfig struct {
 	WilderPeriod int     // ATR Wilder's smoothing period (default 14)
 
 	// Hard gates.
-	MADTVFloor float64 // minimum MADTV in rupees to qualify (default 1e9 = ₹100Cr)
+	MADTVFloor   float64 // minimum MADTV in rupees to qualify (default 1e9 = ₹100Cr)
+	MinMarketCap float64 // in rupees, 0 = no filter
+	MaxMarketCap float64 // in rupees, 0 = no upper limit
 
 	// Scoring weights (must sum to 1.0).
 	// Tradability layer (30%).
@@ -197,6 +199,8 @@ type StockScore struct {
 	RangeEff    float64
 	Momentum5D  float64
 	TradingDays int
+
+	MarketCap int64 // from symbols table
 
 	// New metric raw values.
 	Beta       float64
@@ -400,6 +404,24 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 		allISINs[isin] = true
 	}
 
+	// Fetch market cap from symbols table for market cap filtering.
+	mcapMap := make(map[string]int64)
+	{
+		rows, err := db.Query(`SELECT isin, market_cap FROM symbols WHERE status = 'active'`)
+		if err != nil {
+			log.Printf("WARNING: could not fetch market cap data: %v", err)
+		} else {
+			defer rows.Close()
+			for rows.Next() {
+				var isin string
+				var mc sql.NullInt64
+				if err := rows.Scan(&isin, &mc); err == nil && mc.Valid {
+					mcapMap[isin] = mc.Int64
+				}
+			}
+		}
+	}
+
 	type candidate struct {
 		isin       string
 		madtv      float64
@@ -411,6 +433,7 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 		rangeEff   float64
 		momentum5d float64
 		days       int
+		marketCap  int64
 		// New market context metrics.
 		beta       float64
 		betaR2     float64
@@ -486,6 +509,7 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 		candidates = append(candidates, candidate{
 			isin:       isin,
 			madtv:      adtv.MADTV,
+			marketCap:  mcapMap[isin],
 			amihud:     amihud.Amihud,
 			atrPct:     atr.ATRPct,
 			parkinson:  park.ParkinsonDaily,
@@ -591,9 +615,20 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 			continue
 		}
 
+		// Post-score filter: market cap range.
+		if cfg.MinMarketCap > 0 && float64(c.marketCap) < cfg.MinMarketCap {
+			rejected++
+			continue
+		}
+		if cfg.MaxMarketCap > 0 && float64(c.marketCap) > cfg.MaxMarketCap {
+			rejected++
+			continue
+		}
+
 		scored = append(scored, StockScore{
 			ISIN:         c.isin,
 			MADTV:        c.madtv,
+			MarketCap:    c.marketCap,
 			Amihud:       c.amihud,
 			ATRPct:       c.atrPct,
 			Parkinson:    c.parkinson,
