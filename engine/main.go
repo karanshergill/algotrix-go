@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 
 	"database/sql"
@@ -50,6 +51,12 @@ func main() {
 			return
 		case "watchlist":
 			runWatchlist()
+			return
+		case "benchmark":
+			runBenchmark()
+			return
+		case "backtest":
+			runBacktest()
 			return
 		}
 	}
@@ -334,7 +341,8 @@ func runWatchlist() {
 		// Convert normalized weights (0.10, 0.18...) to raw slider values (10, 18...)
 		// by scaling to sum to 100.
 		total := cfg.WeightMADTV + cfg.WeightAmihud + cfg.WeightTradeSize + cfg.WeightATRPct +
-			cfg.WeightADRPct + cfg.WeightRangeEff + cfg.WeightParkinson + cfg.WeightMomentum
+			cfg.WeightADRPct + cfg.WeightRangeEff + cfg.WeightParkinson + cfg.WeightMomentum +
+			cfg.WeightBeta + cfg.WeightRS + cfg.WeightGap + cfg.WeightVolRatio + cfg.WeightEMASlope
 		scale := func(w float64) float64 {
 			return math.Round(w / total * 100)
 		}
@@ -351,6 +359,11 @@ func runWatchlist() {
 				"rangeEff":  scale(cfg.WeightRangeEff),
 				"parkinson": scale(cfg.WeightParkinson),
 				"momentum":  scale(cfg.WeightMomentum),
+				"beta":      scale(cfg.WeightBeta),
+				"rs":        scale(cfg.WeightRS),
+				"gap":       scale(cfg.WeightGap),
+				"volRatio":  scale(cfg.WeightVolRatio),
+				"emaSlope":  scale(cfg.WeightEMASlope),
 			},
 		}
 		enc := json.NewEncoder(os.Stdout)
@@ -502,10 +515,13 @@ func runWatchlist() {
 		fmt.Printf("    Rejected:         %d\n", result.Rejected)
 		fmt.Printf("    Qualified:        %d\n", len(result.Qualified))
 		fmt.Println()
-		fmt.Printf("  WEIGHTS: MADTV=%.0f%% | Amihud=%.0f%% | ATR%%=%.0f%% | Parkinson=%.0f%% | TradeSize=%.0f%% | ADR%%=%.0f%% | RangeEff=%.0f%% | Momentum=%.0f%%\n",
-			cfg.WeightMADTV*100, cfg.WeightAmihud*100, cfg.WeightATRPct*100,
-			cfg.WeightParkinson*100, cfg.WeightTradeSize*100,
-			cfg.WeightADRPct*100, cfg.WeightRangeEff*100, cfg.WeightMomentum*100)
+		fmt.Printf("  WEIGHTS:\n")
+		fmt.Printf("    Tradability: MADTV=%.0f%% | Amihud=%.0f%% | TradeSize=%.0f%% | ATR%%=%.0f%%\n",
+			cfg.WeightMADTV*100, cfg.WeightAmihud*100, cfg.WeightTradeSize*100, cfg.WeightATRPct*100)
+		fmt.Printf("    Opportunity: ADR%%=%.0f%% | RangeEff=%.0f%% | Parkinson=%.0f%% | Momentum=%.0f%%\n",
+			cfg.WeightADRPct*100, cfg.WeightRangeEff*100, cfg.WeightParkinson*100, cfg.WeightMomentum*100)
+		fmt.Printf("    Market Ctx:  Beta=%.0f%% | RS=%.0f%% | Gap%%=%.0f%% | VolRatio=%.0f%% | EMASlope=%.0f%%\n",
+			cfg.WeightBeta*100, cfg.WeightRS*100, cfg.WeightGap*100, cfg.WeightVolRatio*100, cfg.WeightEMASlope*100)
 		fmt.Println()
 
 		// Ranked table.
@@ -810,6 +826,199 @@ func fetchFnOISINs(db *sql.DB) (map[string]bool, error) {
 	return result, rows.Err()
 }
 
+// runBacktest runs the rolling historical backtest.
+// Usage: go run . backtest [--top N] [--step N] [--fwd 1,5]
+func runBacktest() {
+	cfg := watchlist.DefaultBacktestConfig()
+	jsonOutput := false
+
+	for i, arg := range os.Args {
+		switch arg {
+		case "--top":
+			if i+1 < len(os.Args) {
+				if v, err := strconv.Atoi(os.Args[i+1]); err == nil { cfg.TopN = v }
+			}
+		case "--step":
+			if i+1 < len(os.Args) {
+				if v, err := strconv.Atoi(os.Args[i+1]); err == nil { cfg.StepDays = v }
+			}
+		case "--json":
+			jsonOutput = true
+		}
+	}
+
+	// DB connection.
+	dbCfg, err := conns.LoadDBConfig("db/conns/db.yaml")
+	if err != nil {
+		log.Fatal("Failed to load db config: ", err)
+	}
+	_ = stdlib.GetDefaultDriver()
+	db, err := sql.Open("pgx", dbCfg.Postgres.DSN())
+	if err != nil {
+		log.Fatal("DB connection failed: ", err)
+	}
+	defer db.Close()
+
+	symbolLookup, err := fetchSymbolLookup(db)
+	if err != nil {
+		log.Fatal("Symbol lookup failed: ", err)
+	}
+	_ = symbolLookup // used in future detailed output
+
+	result, err := watchlist.RunBacktest(db, cfg)
+	if err != nil {
+		log.Fatalf("Backtest failed: %v", err)
+	}
+
+	if jsonOutput {
+		type jsonPick struct {
+			ISIN     string  `json:"isin"`
+			Rank     int     `json:"rank"`
+			Score    float64 `json:"score"`
+			Open     float64 `json:"open"`
+			High     float64 `json:"high"`
+			Low      float64 `json:"low"`
+			Close    float64 `json:"close"`
+			MaxOpp   float64 `json:"max_opp"`
+			OCReturn float64 `json:"oc_return"`
+			RangePct float64 `json:"range_pct"`
+		}
+		type jsonDateResult struct {
+			BuildDate string            `json:"build_date"`
+			Horizon   int               `json:"horizon"`
+			Metrics   map[string]float64 `json:"metrics"`
+			Benchmark map[string]float64 `json:"benchmark"`
+			Picks     []jsonPick         `json:"picks"`
+		}
+		type jsonSummary struct {
+			AvgMaxOpp  float64 `json:"avg_max_opp"`
+			AvgOCRet   float64 `json:"avg_oc_ret"`
+			AvgRange   float64 `json:"avg_range"`
+			AvgHitRate float64 `json:"avg_hit_rate"`
+			EdgeMaxOpp float64 `json:"edge_max_opp"`
+			EdgeRange  float64 `json:"edge_range"`
+			WinCount   int     `json:"win_count"`
+			TotalCount int     `json:"total_count"`
+		}
+		type jsonOutput struct {
+			Config  map[string]interface{}    `json:"config"`
+			Dates   []jsonDateResult          `json:"dates"`
+			Summary map[string]jsonSummary    `json:"summary"`
+		}
+
+		var dates []jsonDateResult
+		for _, dr := range result.DateResults {
+			for _, hr := range dr.Horizons {
+				picks := make([]jsonPick, len(hr.Picks))
+				for i, p := range hr.Picks {
+					picks[i] = jsonPick{
+						ISIN: p.ISIN, Rank: p.Rank, Score: p.Score,
+						Open: p.Open, High: p.High, Low: p.Low, Close: p.Close,
+						MaxOpp: p.MaxOpp, OCReturn: p.OCReturn, RangePct: p.RangePct,
+					}
+				}
+				dates = append(dates, jsonDateResult{
+					BuildDate: dr.BuildDate,
+					Horizon:   hr.ForwardDays,
+					Metrics: map[string]float64{
+						"max_opp":  hr.AvgMaxOpp,
+						"oc_ret":   hr.AvgOCReturn,
+						"range":    hr.AvgRange,
+						"hit_rate": hr.HitRate,
+					},
+					Benchmark: map[string]float64{
+						"nifty_max_opp": hr.NiftyAvgMaxOpp,
+						"nifty_range":   hr.NiftyAvgRange,
+					},
+					Picks: picks,
+				})
+			}
+		}
+
+		summaryMap := make(map[string]jsonSummary)
+		for fwd, s := range result.Summary {
+			winCount := 0
+			for _, dr := range result.DateResults {
+				for _, hr := range dr.Horizons {
+					if hr.ForwardDays == fwd && hr.AvgMaxOpp > hr.NiftyAvgMaxOpp {
+						winCount++
+					}
+				}
+			}
+			summaryMap[fmt.Sprintf("T+%d", fwd)] = jsonSummary{
+				AvgMaxOpp:  s.AvgMaxOpp,
+				AvgOCRet:   s.AvgOCReturn,
+				AvgRange:   s.AvgRange,
+				AvgHitRate: s.AvgHitRate,
+				EdgeMaxOpp: s.EdgeMaxOpp,
+				EdgeRange:  s.EdgeRange,
+				WinCount:   winCount,
+				TotalCount: s.NumBuildDates,
+			}
+		}
+
+		out := jsonOutput{
+			Config: map[string]interface{}{
+				"top_n": cfg.TopN,
+				"step":  cfg.StepDays,
+			},
+			Dates:   dates,
+			Summary: summaryMap,
+		}
+		enc := json.NewEncoder(os.Stdout)
+		if err := enc.Encode(out); err != nil {
+			log.Fatalf("JSON encode failed: %v", err)
+		}
+		return
+	}
+
+	// Print results.
+	fmt.Println()
+	fmt.Println("╔══════════════════════════════════════════════════════════════╗")
+	fmt.Println("║             ROLLING HISTORICAL BACKTEST                      ║")
+	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
+	fmt.Println()
+	fmt.Printf("  Top-N: %d | Step: %d days | Horizons: %v\n", cfg.TopN, cfg.StepDays, cfg.ForwardDays)
+	fmt.Printf("  Build dates tested: %d\n", len(result.DateResults))
+	fmt.Println()
+
+	// Per-date results table.
+	for _, fwd := range cfg.ForwardDays {
+		fmt.Printf("  ═══ T+%d Forward Performance ═══\n", fwd)
+		fmt.Printf("  %-12s %7s %7s %7s %7s %7s %7s\n",
+			"BUILD DATE", "MaxOpp", "OC Ret", "Range", "Hit%", "NiftyMO", "NiftyRng")
+		fmt.Println("  " + strings.Repeat("─", 75))
+
+		for _, dr := range result.DateResults {
+			for _, hr := range dr.Horizons {
+				if hr.ForwardDays != fwd {
+					continue
+				}
+				fmt.Printf("  %-12s %+6.2f%% %+6.2f%% %6.2f%% %5.0f%% %+6.2f%% %6.2f%%\n",
+					dr.BuildDate, hr.AvgMaxOpp, hr.AvgOCReturn, hr.AvgRange,
+					hr.HitRate*100, hr.NiftyAvgMaxOpp, hr.NiftyAvgRange)
+			}
+		}
+
+		// Summary.
+		s := result.Summary[fwd]
+		if s != nil && s.NumBuildDates > 0 {
+			fmt.Println("  " + strings.Repeat("─", 75))
+			fmt.Printf("  %-12s %+6.2f%% %+6.2f%% %6.2f%% %5.0f%% %+6.2f%% %6.2f%%\n",
+				"AVERAGE", s.AvgMaxOpp, s.AvgOCReturn, s.AvgRange,
+				s.AvgHitRate*100, s.NiftyAvgMaxOpp, s.NiftyAvgRange)
+			fmt.Println()
+			fmt.Printf("  EDGE vs Nifty 50:\n")
+			fmt.Printf("    Max Opportunity: %+.2f%% (%s)\n", s.EdgeMaxOpp,
+				func() string { if s.EdgeMaxOpp > 0 { return "builder picks better" }; return "nifty was better" }())
+			fmt.Printf("    Session Range:   %+.2f%% (%s)\n", s.EdgeRange,
+				func() string { if s.EdgeRange > 0 { return "more tradeable range" }; return "less range than nifty" }())
+			fmt.Printf("    Avg Hit Rate:    %.0f%% (stocks with >0.5%% upside from open)\n", s.AvgHitRate*100)
+		}
+		fmt.Println()
+	}
+}
+
 // fetchSymbolLookup returns a map of ISIN → Symbol for display.
 func fetchSymbolLookup(db *sql.DB) (map[string]string, error) {
 	rows, err := db.Query(`SELECT isin, symbol FROM symbols WHERE status = 'active'`)
@@ -824,4 +1033,236 @@ func fetchSymbolLookup(db *sql.DB) (map[string]string, error) {
 		result[isin] = sym
 	}
 	return result, rows.Err()
+}
+
+// runBenchmark compares V2 (8-metric legacy) vs V4 (13-metric) watchlist scoring.
+// Usage: go run . benchmark [--top N] [--json]
+func runBenchmark() {
+	var topN int = 50
+	jsonOutput := false
+
+	for i, arg := range os.Args {
+		if arg == "--top" && i+1 < len(os.Args) {
+			if v, err := strconv.Atoi(os.Args[i+1]); err == nil { topN = v }
+		}
+		if arg == "--json" {
+			jsonOutput = true
+		}
+	}
+
+	// DB connection.
+	dbCfg, err := conns.LoadDBConfig("db/conns/db.yaml")
+	if err != nil {
+		log.Fatal("Failed to load db config: ", err)
+	}
+	_ = stdlib.GetDefaultDriver()
+	db, err := sql.Open("pgx", dbCfg.Postgres.DSN())
+	if err != nil {
+		log.Fatal("DB connection failed: ", err)
+	}
+	defer db.Close()
+
+	symbolLookup, err := fetchSymbolLookup(db)
+	if err != nil {
+		log.Fatal("Symbol lookup failed: ", err)
+	}
+
+	// Build with legacy V2 weights.
+	fmt.Println("=== Building V2 (Legacy 8-metric) watchlist ===")
+	legacyCfg := watchlist.LegacyConfig()
+	v2Result, err := watchlist.Build(db, legacyCfg)
+	if err != nil {
+		log.Fatalf("V2 build failed: %v", err)
+	}
+
+	// Build with new V4 weights (13 metrics).
+	fmt.Println("\n=== Building V4 (13-metric) watchlist ===")
+	v4Cfg := watchlist.DefaultConfig()
+	v4Result, err := watchlist.Build(db, v4Cfg)
+	if err != nil {
+		log.Fatalf("V4 build failed: %v", err)
+	}
+
+	// Build rank maps.
+	v2Rank := make(map[string]int)
+	v2Score := make(map[string]float64)
+	for i, s := range v2Result.Qualified {
+		v2Rank[s.ISIN] = i + 1
+		v2Score[s.ISIN] = s.Composite
+	}
+	v4Rank := make(map[string]int)
+	v4Score := make(map[string]float64)
+	v4Data := make(map[string]*watchlist.StockScore)
+	for i, s := range v4Result.Qualified {
+		v4Rank[s.ISIN] = i + 1
+		v4Score[s.ISIN] = s.Composite
+		ss := v4Result.Qualified[i]
+		v4Data[s.ISIN] = &ss
+	}
+
+	if jsonOutput {
+		type comparison struct {
+			Symbol    string  `json:"symbol"`
+			ISIN      string  `json:"isin"`
+			V2Rank    int     `json:"v2Rank"`
+			V4Rank    int     `json:"v4Rank"`
+			RankDelta int     `json:"rankDelta"`
+			V2Score   float64 `json:"v2Score"`
+			V4Score   float64 `json:"v4Score"`
+			TrendState string `json:"trendState,omitempty"`
+			RS         float64 `json:"rs,omitempty"`
+			Beta       float64 `json:"beta,omitempty"`
+		}
+		var comparisons []comparison
+
+		// Collect all ISINs in either list.
+		allISINs := make(map[string]bool)
+		limit2 := topN; if limit2 > len(v2Result.Qualified) { limit2 = len(v2Result.Qualified) }
+		for i := 0; i < limit2; i++ { allISINs[v2Result.Qualified[i].ISIN] = true }
+		limit4 := topN; if limit4 > len(v4Result.Qualified) { limit4 = len(v4Result.Qualified) }
+		for i := 0; i < limit4; i++ { allISINs[v4Result.Qualified[i].ISIN] = true }
+
+		for isin := range allISINs {
+			sym := symbolLookup[isin]
+			if sym == "" { sym = isin }
+			r2 := v2Rank[isin]
+			r4 := v4Rank[isin]
+			c := comparison{
+				Symbol:    sym,
+				ISIN:      isin,
+				V2Rank:    r2,
+				V4Rank:    r4,
+				RankDelta: r2 - r4,
+				V2Score:   v2Score[isin],
+				V4Score:   v4Score[isin],
+			}
+			if d, ok := v4Data[isin]; ok {
+				c.TrendState = d.TrendState
+				c.RS = d.RS
+				c.Beta = d.Beta
+			}
+			comparisons = append(comparisons, c)
+		}
+		sort.Slice(comparisons, func(i, j int) bool { return comparisons[i].V4Rank < comparisons[j].V4Rank })
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		enc.Encode(comparisons)
+		return
+	}
+
+	// Text output.
+	fmt.Println()
+	fmt.Println("╔══════════════════════════════════════════════════════════════╗")
+	fmt.Println("║              V2 vs V4 BENCHMARK COMPARISON                  ║")
+	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
+	fmt.Println()
+	fmt.Printf("  V2 (8 metrics):  %d qualified\n", len(v2Result.Qualified))
+	fmt.Printf("  V4 (13 metrics): %d qualified\n", len(v4Result.Qualified))
+	fmt.Println()
+
+	// Biggest risers: stocks that rose the most in rank (V4 rank << V2 rank).
+	type rankChange struct {
+		isin  string
+		v2r   int
+		v4r   int
+		delta int
+	}
+	var changes []rankChange
+	limit4 := topN; if limit4 > len(v4Result.Qualified) { limit4 = len(v4Result.Qualified) }
+	for i := 0; i < limit4; i++ {
+		isin := v4Result.Qualified[i].ISIN
+		r2 := v2Rank[isin]
+		r4 := i + 1
+		if r2 == 0 { r2 = len(v2Result.Qualified) + 1 } // not in V2
+		changes = append(changes, rankChange{isin, r2, r4, r2 - r4})
+	}
+	sort.Slice(changes, func(i, j int) bool { return changes[i].delta > changes[j].delta })
+
+	fmt.Println("  🚀 BIGGEST RISERS (V4 ranks them HIGHER than V2):")
+	fmt.Printf("  %-4s %-12s %6s %6s %7s  %-12s %6s %6s\n", "#", "SYMBOL", "V2", "V4", "DELTA", "TREND", "RS", "BETA")
+	fmt.Println("  " + strings.Repeat("─", 80))
+	shown := 0
+	for _, c := range changes {
+		if shown >= 15 { break }
+		sym := symbolLookup[c.isin]
+		if sym == "" { sym = "???" }
+		v2str := fmt.Sprintf("#%d", c.v2r)
+		if c.v2r > len(v2Result.Qualified) { v2str = "NEW" }
+		d := v4Data[c.isin]
+		trend := ""
+		var rs, beta float64
+		if d != nil {
+			trend = d.TrendState
+			rs = d.RS
+			beta = d.Beta
+		}
+		fmt.Printf("  %-4d %-12s %6s %6s %+7d  %-12s %+.3f %5.2f\n",
+			shown+1, sym, v2str, fmt.Sprintf("#%d", c.v4r), c.delta, trend, rs, beta)
+		shown++
+	}
+
+	// Biggest fallers.
+	sort.Slice(changes, func(i, j int) bool { return changes[i].delta < changes[j].delta })
+	fmt.Println()
+	fmt.Println("  📉 BIGGEST FALLERS (V4 ranks them LOWER than V2):")
+	fmt.Printf("  %-4s %-12s %6s %6s %7s  %-12s %6s %6s\n", "#", "SYMBOL", "V2", "V4", "DELTA", "TREND", "RS", "BETA")
+	fmt.Println("  " + strings.Repeat("─", 80))
+	shown = 0
+	for _, c := range changes {
+		if shown >= 15 { break }
+		if c.delta >= 0 { break }
+		sym := symbolLookup[c.isin]
+		if sym == "" { sym = "???" }
+		d := v4Data[c.isin]
+		trend := ""
+		var rs, beta float64
+		if d != nil {
+			trend = d.TrendState
+			rs = d.RS
+			beta = d.Beta
+		}
+		fmt.Printf("  %-4d %-12s %6s %6s %+7d  %-12s %+.3f %5.2f\n",
+			shown+1, sym, fmt.Sprintf("#%d", c.v2r), fmt.Sprintf("#%d", c.v4r), c.delta, trend, rs, beta)
+		shown++
+	}
+
+	// New in V4 (not in V2 top N).
+	fmt.Println()
+	fmt.Println("  🆕 NEW IN V4 TOP (not in V2 qualified):")
+	shown = 0
+	for i := 0; i < limit4 && shown < 10; i++ {
+		isin := v4Result.Qualified[i].ISIN
+		if _, inV2 := v2Rank[isin]; !inV2 {
+			sym := symbolLookup[isin]
+			if sym == "" { sym = "???" }
+			d := v4Data[isin]
+			trend := ""
+			if d != nil { trend = d.TrendState }
+			fmt.Printf("    V4 #%d  %-12s  trend=%s  score=%.1f\n", i+1, sym, trend, v4Score[isin])
+			shown++
+		}
+	}
+	if shown == 0 {
+		fmt.Println("    (none)")
+	}
+
+	// Overlap analysis.
+	v2Top := make(map[string]bool)
+	v4Top := make(map[string]bool)
+	limit := topN
+	if limit > len(v2Result.Qualified) { limit = len(v2Result.Qualified) }
+	for i := 0; i < limit; i++ { v2Top[v2Result.Qualified[i].ISIN] = true }
+	limit = topN
+	if limit > len(v4Result.Qualified) { limit = len(v4Result.Qualified) }
+	for i := 0; i < limit; i++ { v4Top[v4Result.Qualified[i].ISIN] = true }
+
+	overlap := 0
+	for isin := range v4Top {
+		if v2Top[isin] { overlap++ }
+	}
+	fmt.Println()
+	fmt.Printf("  OVERLAP: Top %d — %d stocks in common (%.0f%%)\n",
+		topN, overlap, float64(overlap)/float64(topN)*100)
+	fmt.Printf("  V4-only: %d new stocks | V2-only: %d dropped stocks\n",
+		len(v4Top)-overlap, len(v2Top)-overlap)
 }

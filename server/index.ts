@@ -9,11 +9,13 @@ import ohlcv from './routes/ohlcv'
 import sectors from './routes/sectors'
 import symbols from './routes/symbols'
 import watchlist from './routes/watchlist'
+import backtest from './routes/backtest'
 
 const app = new Hono()
 
 app.use('/api/*', cors({ origin: '*' }))
 app.route('/api/auth', auth)
+app.route('/api/backtests', backtest)
 app.route('/api/calendar', calendar)
 app.route('/api/feed', feed)
 app.route('/api/indices', indices)

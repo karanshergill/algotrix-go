@@ -3,6 +3,7 @@ import {
   Construction,
   Crosshair,
   Database,
+  FlaskConical,
   LayoutDashboard,
   Monitor,
   Bug,
@@ -75,6 +76,11 @@ export const sidebarData: SidebarData = {
           title: 'Watchlist Builder',
           url: '/watchlist',
           icon: Crosshair,
+        },
+        {
+          title: 'Backtests',
+          url: '/backtests',
+          icon: FlaskConical,
         },
         {
           title: 'Workflows',

@@ -101,22 +101,31 @@ type BuildConfig struct {
 	MADTVFloor float64 // minimum MADTV in rupees to qualify (default 1e9 = ₹100Cr)
 
 	// Scoring weights (must sum to 1.0).
-	// Tradability layer (40%).
-	WeightMADTV     float64 // default 0.10
-	WeightAmihud    float64 // default 0.10
-	WeightTradeSize float64 // default 0.10
-	WeightATRPct    float64 // default 0.10
-	// Opportunity layer (60%).
-	WeightADRPct        float64 // default 0.15
-	WeightRangeEff      float64 // default 0.15
-	WeightParkinson     float64 // default 0.10
-	WeightMomentum      float64 // default 0.10
+	// Tradability layer (30%).
+	WeightMADTV     float64 // default 0.08
+	WeightAmihud    float64 // default 0.08
+	WeightTradeSize float64 // default 0.07
+	WeightATRPct    float64 // default 0.07
+	// Opportunity layer (35%).
+	WeightADRPct    float64 // default 0.10
+	WeightRangeEff  float64 // default 0.10
+	WeightParkinson float64 // default 0.08
+	WeightMomentum  float64 // default 0.07
+	// Market context layer (35%).
+	WeightBeta     float64 // default 0.07
+	WeightRS       float64 // default 0.08
+	WeightGap      float64 // default 0.06
+	WeightVolRatio float64 // default 0.07
+	WeightEMASlope float64 // default 0.07
 
 	// Optional composite score floor (0 = no floor).
 	MinCompositeScore float64
 
 	// Universe filter: if non-nil, only include these ISINs.
 	UniverseISINs map[string]bool
+
+	// SkipFreshness disables the data freshness check (used for historical backtesting).
+	SkipFreshness bool
 }
 
 // DefaultConfig returns the default build configuration.
@@ -126,18 +135,52 @@ func DefaultConfig() BuildConfig {
 		MinCoverage:  1.0,
 		WilderPeriod: 14,
 		MADTVFloor:   1e9, // ₹100 Crore
-		// Tradability layer (40%).
+		// Tradability layer (30%).
+		WeightMADTV:     0.08,
+		WeightAmihud:    0.08,
+		WeightTradeSize: 0.07,
+		WeightATRPct:    0.07,
+		// Opportunity layer (35%).
+		WeightADRPct:    0.10,
+		WeightRangeEff:  0.10,
+		WeightParkinson: 0.08,
+		WeightMomentum:  0.07,
+		// Market context layer (35%).
+		WeightBeta:     0.07,
+		WeightRS:       0.08,
+		WeightGap:      0.06,
+		WeightVolRatio: 0.07,
+		WeightEMASlope: 0.07,
+		MinCompositeScore: 0,
+	}
+}
+
+// LegacyConfig returns the old V2 weight configuration (8 metrics only)
+// for benchmark comparisons. New metric weights are zeroed out.
+func LegacyConfig() BuildConfig {
+	cfg := BuildConfig{
+		LookbackDays: 30,
+		MinCoverage:  1.0,
+		WilderPeriod: 14,
+		MADTVFloor:   1e9,
+		// Original V2 weights.
 		WeightMADTV:     0.10,
 		WeightAmihud:    0.10,
 		WeightTradeSize: 0.10,
 		WeightATRPct:    0.10,
-		// Opportunity layer (60%).
-		WeightADRPct:      0.18,
-		WeightRangeEff:    0.17,
-		WeightParkinson:   0.12,
-		WeightMomentum:    0.13,
+		WeightADRPct:    0.18,
+		WeightRangeEff:  0.17,
+		WeightParkinson: 0.12,
+		WeightMomentum:  0.13,
+		// New metrics zeroed.
+		WeightBeta:     0,
+		WeightRS:       0,
+		WeightGap:      0,
+		WeightVolRatio: 0,
+		WeightEMASlope: 0,
 		MinCompositeScore: 0,
 	}
+	return cfg
 }
 
 // StockScore holds the per-metric percentile scores and composite for one ISIN.
@@ -155,6 +198,15 @@ type StockScore struct {
 	Momentum5D  float64
 	TradingDays int
 
+	// New metric raw values.
+	Beta       float64
+	BetaR2     float64
+	RS         float64 // RS composite
+	GapAvgAbs  float64
+	VolRatio   float64
+	TrendScore float64
+	TrendState string
+
 	// Percentile scores (0-100).
 	PctMADTV     float64
 	PctAmihud    float64 // inverted: lowest raw Amihud = 100
@@ -164,6 +216,13 @@ type StockScore struct {
 	PctADRPct    float64
 	PctRangeEff  float64
 	PctMomentum  float64
+
+	// New metric percentiles.
+	PctBeta     float64
+	PctRS       float64
+	PctGap      float64
+	PctVolRatio float64
+	PctEMASlope float64
 
 	// Weighted composite score (0-100).
 	Composite float64
@@ -189,9 +248,11 @@ type BuildResult struct {
 // Build constructs a watchlist by computing metrics, applying hard gates,
 // percentile ranking, and composite scoring.
 func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
-	// Pre-flight: check data freshness.
-	if err := checkDataFreshness(db); err != nil {
-		return nil, err
+	// Pre-flight: check data freshness (skip for backtesting).
+	if !cfg.SkipFreshness {
+		if err := checkDataFreshness(db); err != nil {
+			return nil, err
+		}
 	}
 
 	// Compute all metrics.
@@ -243,6 +304,42 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 		return nil, fmt.Errorf("computing Momentum: %w", err)
 	}
 
+	// New market context metrics (use 60-day lookback for EMA/Beta warm-up).
+	contextLookback := 60
+	if cfg.LookbackDays > contextLookback {
+		contextLookback = cfg.LookbackDays
+	}
+
+	log.Println("Computing Beta...")
+	betaResults, err := metrics.ComputeBeta(db, contextLookback, 0.8)
+	if err != nil {
+		return nil, fmt.Errorf("computing Beta: %w", err)
+	}
+
+	log.Println("Computing Relative Strength...")
+	rsResults, err := metrics.ComputeRelStrength(db, contextLookback, 0.8)
+	if err != nil {
+		return nil, fmt.Errorf("computing Relative Strength: %w", err)
+	}
+
+	log.Println("Computing Gap%...")
+	gapResults, err := metrics.ComputeGap(db, cfg.LookbackDays, cfg.MinCoverage)
+	if err != nil {
+		return nil, fmt.Errorf("computing Gap: %w", err)
+	}
+
+	log.Println("Computing Volume Ratio...")
+	vrResults, err := metrics.ComputeVolRatio(db, contextLookback, 0.8)
+	if err != nil {
+		return nil, fmt.Errorf("computing Volume Ratio: %w", err)
+	}
+
+	log.Println("Computing EMA Slope...")
+	emaResults, err := metrics.ComputeEMASlope(db, contextLookback, 0.8)
+	if err != nil {
+		return nil, fmt.Errorf("computing EMA Slope: %w", err)
+	}
+
 	// Index metrics by ISIN for fast lookup.
 	adtvMap := make(map[string]*metrics.ADTVResult)
 	for i := range adtvResults {
@@ -276,6 +373,26 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 	for i := range momResults {
 		momMap[momResults[i].ISIN] = &momResults[i]
 	}
+	betaMap := make(map[string]*metrics.BetaResult)
+	for i := range betaResults {
+		betaMap[betaResults[i].ISIN] = &betaResults[i]
+	}
+	rsMap := make(map[string]*metrics.RelStrengthResult)
+	for i := range rsResults {
+		rsMap[rsResults[i].ISIN] = &rsResults[i]
+	}
+	gapMap := make(map[string]*metrics.GapResult)
+	for i := range gapResults {
+		gapMap[gapResults[i].ISIN] = &gapResults[i]
+	}
+	vrMap := make(map[string]*metrics.VolRatioResult)
+	for i := range vrResults {
+		vrMap[vrResults[i].ISIN] = &vrResults[i]
+	}
+	emaMap := make(map[string]*metrics.EMASlopeResult)
+	for i := range emaResults {
+		emaMap[emaResults[i].ISIN] = &emaResults[i]
+	}
 
 	// Collect all ISINs that have ADTV (base metric).
 	allISINs := make(map[string]bool)
@@ -294,11 +411,23 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 		rangeEff   float64
 		momentum5d float64
 		days       int
+		// New market context metrics.
+		beta       float64
+		betaR2     float64
+		rs         float64 // RS composite
+		gapAvgAbs  float64
+		volRatio   float64
+		trendScore float64
+		trendState string
 	}
 
 	var candidates []candidate
 	rejected := 0
 	total := 0
+
+	// Check if new metrics have any weight (for backward compat with legacy configs).
+	needNewMetrics := cfg.WeightBeta > 0 || cfg.WeightRS > 0 || cfg.WeightGap > 0 ||
+		cfg.WeightVolRatio > 0 || cfg.WeightEMASlope > 0
 
 	for isin := range allISINs {
 		// Universe filter.
@@ -314,7 +443,7 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 			continue
 		}
 
-		// All 8 metrics must exist.
+		// All 8 base metrics must exist.
 		adtv, ok1 := adtvMap[isin]
 		atr, ok2 := atrMap[isin]
 		amihud, ok3 := amihudMap[isin]
@@ -326,6 +455,28 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 		if !ok1 || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 {
 			rejected++
 			continue
+		}
+
+		// New metrics: optional — if weighted, they must exist; if zero-weighted, use defaults.
+		var betaVal, betaR2Val, rsVal, gapVal, vrVal, tscore float64
+		var tstate string
+		if needNewMetrics {
+			b, okB := betaMap[isin]
+			r, okR := rsMap[isin]
+			g, okG := gapMap[isin]
+			v, okV := vrMap[isin]
+			e, okE := emaMap[isin]
+			if !okB || !okR || !okG || !okV || !okE {
+				rejected++
+				continue
+			}
+			betaVal = b.Beta
+			betaR2Val = b.RSquared
+			rsVal = r.RSComposite
+			gapVal = g.AvgAbsGapPct
+			vrVal = v.VolumeRatio
+			tscore = e.TrendScore
+			tstate = e.TrendState
 		}
 
 		// NOTE: MADTV floor is applied AFTER scoring (post-filter) so that
@@ -343,6 +494,13 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 			rangeEff:   re.AvgRangeEfficiency,
 			momentum5d: mom.Return5D,
 			days:       adtv.TradingDays,
+			beta:       betaVal,
+			betaR2:     betaR2Val,
+			rs:         rsVal,
+			gapAvgAbs:  gapVal,
+			volRatio:   vrVal,
+			trendScore: tscore,
+			trendState: tstate,
 		})
 	}
 
@@ -362,6 +520,11 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 	adrPctVals := make([]float64, n)
 	reVals := make([]float64, n)
 	momVals := make([]float64, n)
+	betaVals := make([]float64, n)
+	rsVals := make([]float64, n)
+	gapVals := make([]float64, n)
+	vrVals := make([]float64, n)
+	emaVals := make([]float64, n)
 	for i, c := range candidates {
 		madtvVals[i] = c.madtv
 		amihudVals[i] = c.amihud
@@ -372,16 +535,31 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 		reVals[i] = c.rangeEff
 		// Momentum uses absolute value — strong movers in either direction score high.
 		momVals[i] = math.Abs(c.momentum5d)
+		// Beta: higher = more reactive to market. Use abs for ranking (negative beta is also interesting).
+		betaVals[i] = math.Abs(c.beta)
+		// RS composite: higher = stronger relative performance.
+		rsVals[i] = c.rs
+		// Gap: higher avg abs gap = more overnight opportunity/risk.
+		gapVals[i] = c.gapAvgAbs
+		// Volume Ratio: higher = more surge activity.
+		vrVals[i] = c.volRatio
+		// EMA Slope trend score: use absolute value (strong trend in either direction is tradable).
+		emaVals[i] = math.Abs(c.trendScore)
 	}
 
-	pctMADTV := percentileRank(madtvVals, false)      // higher = better
-	pctAmihud := percentileRank(amihudVals, true)      // lower raw = better → invert
-	pctATRPct := percentileRank(atrPctVals, false)     // higher = better
-	pctParkinson := percentileRank(parkVals, false)     // higher = better
-	pctTradeSize := percentileRank(tsVals, false)       // higher = better
-	pctADRPct := percentileRank(adrPctVals, false)      // higher = better
-	pctRangeEff := percentileRank(reVals, false)        // higher = better
-	pctMomentum := percentileRank(momVals, false)       // higher abs = better
+	pctMADTV := percentileRank(madtvVals, false)       // higher = better
+	pctAmihud := percentileRank(amihudVals, true)       // lower raw = better → invert
+	pctATRPct := percentileRank(atrPctVals, false)      // higher = better
+	pctParkinson := percentileRank(parkVals, false)      // higher = better
+	pctTradeSize := percentileRank(tsVals, false)        // higher = better
+	pctADRPct := percentileRank(adrPctVals, false)       // higher = better
+	pctRangeEff := percentileRank(reVals, false)         // higher = better
+	pctMomentum := percentileRank(momVals, false)        // higher abs = better
+	pctBeta := percentileRank(betaVals, false)           // higher abs beta = more reactive
+	pctRS := percentileRank(rsVals, false)               // higher RS = outperforming
+	pctGap := percentileRank(gapVals, false)             // higher gap = more opportunity
+	pctVolRatio := percentileRank(vrVals, false)         // higher VR = more surge
+	pctEMASlope := percentileRank(emaVals, false)        // higher abs trend = stronger trend
 
 	// Build scored results.
 	var scored []StockScore
@@ -393,7 +571,12 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 			cfg.WeightTradeSize*pctTradeSize[i] +
 			cfg.WeightADRPct*pctADRPct[i] +
 			cfg.WeightRangeEff*pctRangeEff[i] +
-			cfg.WeightMomentum*pctMomentum[i]
+			cfg.WeightMomentum*pctMomentum[i] +
+			cfg.WeightBeta*pctBeta[i] +
+			cfg.WeightRS*pctRS[i] +
+			cfg.WeightGap*pctGap[i] +
+			cfg.WeightVolRatio*pctVolRatio[i] +
+			cfg.WeightEMASlope*pctEMASlope[i]
 
 		// Optional composite score floor.
 		if cfg.MinCompositeScore > 0 && composite < cfg.MinCompositeScore {
@@ -419,6 +602,13 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 			RangeEff:     c.rangeEff,
 			Momentum5D:   c.momentum5d,
 			TradingDays:  c.days,
+			Beta:         c.beta,
+			BetaR2:       c.betaR2,
+			RS:           c.rs,
+			GapAvgAbs:    c.gapAvgAbs,
+			VolRatio:     c.volRatio,
+			TrendScore:   c.trendScore,
+			TrendState:   c.trendState,
 			PctMADTV:     pctMADTV[i],
 			PctAmihud:    pctAmihud[i],
 			PctATRPct:    pctATRPct[i],
@@ -427,6 +617,11 @@ func Build(db *sql.DB, cfg BuildConfig) (*BuildResult, error) {
 			PctADRPct:    pctADRPct[i],
 			PctRangeEff:  pctRangeEff[i],
 			PctMomentum:  pctMomentum[i],
+			PctBeta:      pctBeta[i],
+			PctRS:        pctRS[i],
+			PctGap:       pctGap[i],
+			PctVolRatio:  pctVolRatio[i],
+			PctEMASlope:  pctEMASlope[i],
 			Composite:    composite,
 		})
 	}
@@ -458,14 +653,19 @@ func computeMetricStats(stocks []StockScore) map[string]MetricStats {
 	}
 
 	extractors := map[string]func(s StockScore) float64{
-		"madtv":     func(s StockScore) float64 { return s.MADTV },
-		"amihud":    func(s StockScore) float64 { return s.Amihud },
-		"atrPct":    func(s StockScore) float64 { return s.ATRPct },
-		"parkinson": func(s StockScore) float64 { return s.Parkinson },
-		"tradeSize": func(s StockScore) float64 { return s.TradeSize },
-		"adrPct":    func(s StockScore) float64 { return s.ADRPct },
-		"rangeEff":  func(s StockScore) float64 { return s.RangeEff },
-		"momentum":  func(s StockScore) float64 { return math.Abs(s.Momentum5D) },
+		"madtv":      func(s StockScore) float64 { return s.MADTV },
+		"amihud":     func(s StockScore) float64 { return s.Amihud },
+		"atrPct":     func(s StockScore) float64 { return s.ATRPct },
+		"parkinson":  func(s StockScore) float64 { return s.Parkinson },
+		"tradeSize":  func(s StockScore) float64 { return s.TradeSize },
+		"adrPct":     func(s StockScore) float64 { return s.ADRPct },
+		"rangeEff":   func(s StockScore) float64 { return s.RangeEff },
+		"momentum":   func(s StockScore) float64 { return math.Abs(s.Momentum5D) },
+		"beta":       func(s StockScore) float64 { return math.Abs(s.Beta) },
+		"rs":         func(s StockScore) float64 { return s.RS },
+		"gapAvgAbs":  func(s StockScore) float64 { return s.GapAvgAbs },
+		"volRatio":   func(s StockScore) float64 { return s.VolRatio },
+		"trendScore": func(s StockScore) float64 { return math.Abs(s.TrendScore) },
 	}
 
 	result := make(map[string]MetricStats, len(extractors))

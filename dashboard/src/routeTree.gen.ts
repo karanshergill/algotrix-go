@@ -34,6 +34,7 @@ import { Route as AuthenticatedOhlcvIndexRouteImport } from './routes/_authentic
 import { Route as AuthenticatedIndustryAndSectorPulseIndexRouteImport } from './routes/_authenticated/industry-and-sector-pulse/index'
 import { Route as AuthenticatedHelpCenterIndexRouteImport } from './routes/_authenticated/help-center/index'
 import { Route as AuthenticatedChatsIndexRouteImport } from './routes/_authenticated/chats/index'
+import { Route as AuthenticatedBacktestsIndexRouteImport } from './routes/_authenticated/backtests/index'
 import { Route as AuthenticatedAppsIndexRouteImport } from './routes/_authenticated/apps/index'
 import { Route as ClerkAuthenticatedUserManagementRouteImport } from './routes/clerk/_authenticated/user-management'
 import { Route as ClerkauthSignUpRouteImport } from './routes/clerk/(auth)/sign-up'
@@ -43,6 +44,7 @@ import { Route as AuthenticatedSettingsDisplayRouteImport } from './routes/_auth
 import { Route as AuthenticatedSettingsAppearanceRouteImport } from './routes/_authenticated/settings/appearance'
 import { Route as AuthenticatedSettingsAccountRouteImport } from './routes/_authenticated/settings/account'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
+import { Route as AuthenticatedBacktestsIdRouteImport } from './routes/_authenticated/backtests/$id'
 
 const ClerkRouteRoute = ClerkRouteRouteImport.update({
   id: '/clerk',
@@ -172,6 +174,12 @@ const AuthenticatedChatsIndexRoute = AuthenticatedChatsIndexRouteImport.update({
   path: '/chats/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedBacktestsIndexRoute =
+  AuthenticatedBacktestsIndexRouteImport.update({
+    id: '/backtests/',
+    path: '/backtests/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAppsIndexRoute = AuthenticatedAppsIndexRouteImport.update({
   id: '/apps/',
   path: '/apps/',
@@ -223,6 +231,12 @@ const AuthenticatedErrorsErrorRoute =
     path: '/errors/$error',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedBacktestsIdRoute =
+  AuthenticatedBacktestsIdRouteImport.update({
+    id: '/backtests/$id',
+    path: '/backtests/$id',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/clerk': typeof ClerkAuthenticatedRouteRouteWithChildren
@@ -238,6 +252,7 @@ export interface FileRoutesByFullPath {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/': typeof AuthenticatedIndexRoute
+  '/backtests/$id': typeof AuthenticatedBacktestsIdRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
@@ -247,6 +262,7 @@ export interface FileRoutesByFullPath {
   '/clerk/sign-up': typeof ClerkauthSignUpRoute
   '/clerk/user-management': typeof ClerkAuthenticatedUserManagementRoute
   '/apps': typeof AuthenticatedAppsIndexRoute
+  '/backtests': typeof AuthenticatedBacktestsIndexRoute
   '/chats': typeof AuthenticatedChatsIndexRoute
   '/help-center': typeof AuthenticatedHelpCenterIndexRoute
   '/industry-and-sector-pulse': typeof AuthenticatedIndustryAndSectorPulseIndexRoute
@@ -270,6 +286,7 @@ export interface FileRoutesByTo {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/': typeof AuthenticatedIndexRoute
+  '/backtests/$id': typeof AuthenticatedBacktestsIdRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
@@ -279,6 +296,7 @@ export interface FileRoutesByTo {
   '/clerk/sign-up': typeof ClerkauthSignUpRoute
   '/clerk/user-management': typeof ClerkAuthenticatedUserManagementRoute
   '/apps': typeof AuthenticatedAppsIndexRoute
+  '/backtests': typeof AuthenticatedBacktestsIndexRoute
   '/chats': typeof AuthenticatedChatsIndexRoute
   '/help-center': typeof AuthenticatedHelpCenterIndexRoute
   '/industry-and-sector-pulse': typeof AuthenticatedIndustryAndSectorPulseIndexRoute
@@ -307,6 +325,7 @@ export interface FileRoutesById {
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/backtests/$id': typeof AuthenticatedBacktestsIdRoute
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/_authenticated/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
@@ -316,6 +335,7 @@ export interface FileRoutesById {
   '/clerk/(auth)/sign-up': typeof ClerkauthSignUpRoute
   '/clerk/_authenticated/user-management': typeof ClerkAuthenticatedUserManagementRoute
   '/_authenticated/apps/': typeof AuthenticatedAppsIndexRoute
+  '/_authenticated/backtests/': typeof AuthenticatedBacktestsIndexRoute
   '/_authenticated/chats/': typeof AuthenticatedChatsIndexRoute
   '/_authenticated/help-center/': typeof AuthenticatedHelpCenterIndexRoute
   '/_authenticated/industry-and-sector-pulse/': typeof AuthenticatedIndustryAndSectorPulseIndexRoute
@@ -342,6 +362,7 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/'
+    | '/backtests/$id'
     | '/errors/$error'
     | '/settings/account'
     | '/settings/appearance'
@@ -351,6 +372,7 @@ export interface FileRouteTypes {
     | '/clerk/sign-up'
     | '/clerk/user-management'
     | '/apps'
+    | '/backtests'
     | '/chats'
     | '/help-center'
     | '/industry-and-sector-pulse'
@@ -374,6 +396,7 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/'
+    | '/backtests/$id'
     | '/errors/$error'
     | '/settings/account'
     | '/settings/appearance'
@@ -383,6 +406,7 @@ export interface FileRouteTypes {
     | '/clerk/sign-up'
     | '/clerk/user-management'
     | '/apps'
+    | '/backtests'
     | '/chats'
     | '/help-center'
     | '/industry-and-sector-pulse'
@@ -410,6 +434,7 @@ export interface FileRouteTypes {
     | '/(errors)/500'
     | '/(errors)/503'
     | '/_authenticated/'
+    | '/_authenticated/backtests/$id'
     | '/_authenticated/errors/$error'
     | '/_authenticated/settings/account'
     | '/_authenticated/settings/appearance'
@@ -419,6 +444,7 @@ export interface FileRouteTypes {
     | '/clerk/(auth)/sign-up'
     | '/clerk/_authenticated/user-management'
     | '/_authenticated/apps/'
+    | '/_authenticated/backtests/'
     | '/_authenticated/chats/'
     | '/_authenticated/help-center/'
     | '/_authenticated/industry-and-sector-pulse/'
@@ -622,6 +648,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedChatsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/backtests/': {
+      id: '/_authenticated/backtests/'
+      path: '/backtests'
+      fullPath: '/backtests'
+      preLoaderRoute: typeof AuthenticatedBacktestsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/apps/': {
       id: '/_authenticated/apps/'
       path: '/apps'
@@ -685,6 +718,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedErrorsErrorRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/backtests/$id': {
+      id: '/_authenticated/backtests/$id'
+      path: '/backtests/$id'
+      fullPath: '/backtests/$id'
+      preLoaderRoute: typeof AuthenticatedBacktestsIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -714,8 +754,10 @@ const AuthenticatedSettingsRouteRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedBacktestsIdRoute: typeof AuthenticatedBacktestsIdRoute
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
   AuthenticatedAppsIndexRoute: typeof AuthenticatedAppsIndexRoute
+  AuthenticatedBacktestsIndexRoute: typeof AuthenticatedBacktestsIndexRoute
   AuthenticatedChatsIndexRoute: typeof AuthenticatedChatsIndexRoute
   AuthenticatedHelpCenterIndexRoute: typeof AuthenticatedHelpCenterIndexRoute
   AuthenticatedIndustryAndSectorPulseIndexRoute: typeof AuthenticatedIndustryAndSectorPulseIndexRoute
@@ -729,8 +771,10 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedBacktestsIdRoute: AuthenticatedBacktestsIdRoute,
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
   AuthenticatedAppsIndexRoute: AuthenticatedAppsIndexRoute,
+  AuthenticatedBacktestsIndexRoute: AuthenticatedBacktestsIndexRoute,
   AuthenticatedChatsIndexRoute: AuthenticatedChatsIndexRoute,
   AuthenticatedHelpCenterIndexRoute: AuthenticatedHelpCenterIndexRoute,
   AuthenticatedIndustryAndSectorPulseIndexRoute:
