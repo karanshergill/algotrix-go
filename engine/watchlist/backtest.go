@@ -24,7 +24,7 @@ func DefaultBacktestConfig() BacktestConfig {
 	return BacktestConfig{
 		BuildConfig: cfg,
 		TopN:        25,
-		StepDays:    5,
+		StepDays:    1,
 		ForwardDays: []int{1},
 		MinLookback: 60,
 	}
