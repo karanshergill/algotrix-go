@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { FlaskConical, Plus, Trash2, RefreshCw } from 'lucide-react'
+import { FlaskConical, Plus, Trash2, RefreshCw, ChevronDown } from 'lucide-react'
 import { format } from 'date-fns'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { HeaderToolbar } from '@/components/layout/header-toolbar'
 import { Badge } from '@/components/ui/badge'
@@ -41,12 +44,38 @@ export function BacktestsListPage() {
   const runMutation = useRunBacktest()
   const deleteMutation = useDeleteBacktest()
 
+  const [showConfig, setShowConfig] = useState(false)
+  const [name, setName] = useState('')
+  const [topN, setTopN] = useState(25)
+  const [step, setStep] = useState(1)
+  const [minMcap, setMinMcap] = useState(0)
+  const [maxMcap, setMaxMcap] = useState(0)
+
+  const openConfig = () => {
+    setName(`Builder Backtest ${format(new Date(), 'yyyy-MM-dd HH:mm')}`)
+    setTopN(25)
+    setStep(1)
+    setMinMcap(0)
+    setMaxMcap(0)
+    setShowConfig(true)
+  }
+
   const handleRun = () => {
-    runMutation.mutate({
-      type: 'builder',
-      name: `Builder Backtest ${format(new Date(), 'yyyy-MM-dd HH:mm')}`,
-      config: { top_n: 25, step: 1 },
-    })
+    runMutation.mutate(
+      {
+        type: 'builder',
+        name,
+        config: {
+          top_n: topN,
+          step,
+          min_mcap: minMcap || undefined,
+          max_mcap: maxMcap || undefined,
+        },
+      },
+      {
+        onSuccess: () => setShowConfig(false),
+      },
+    )
   }
 
   const handleDelete = (e: React.MouseEvent, id: number) => {
@@ -77,20 +106,116 @@ export function BacktestsListPage() {
         <span className='text-xs text-muted-foreground'>
           {runs?.length ?? 0} run{(runs?.length ?? 0) !== 1 ? 's' : ''}
         </span>
-        <Button onClick={handleRun} disabled={runMutation.isPending} size='sm' className='h-7 px-4'>
-          {runMutation.isPending ? (
-            <>
-              <RefreshCw size={12} className='mr-1.5 animate-spin' />
-              Running…
-            </>
-          ) : (
-            <>
-              <Plus size={12} className='mr-1.5' />
-              Run New Backtest
-            </>
-          )}
-        </Button>
+        {!showConfig && (
+          <Button onClick={openConfig} size='sm' className='h-7 px-4'>
+            <Plus size={12} className='mr-1.5' />
+            New Backtest
+          </Button>
+        )}
       </div>
+
+      {/* Config panel */}
+      {showConfig && (
+        <div className='px-6 py-3 border-b border-border/50 shrink-0'>
+          <Card className='p-4'>
+            <div className='flex items-center gap-2 mb-3'>
+              <ChevronDown size={14} className='text-muted-foreground' />
+              <span className='text-sm font-medium'>Backtest Configuration</span>
+            </div>
+
+            <div className='grid grid-cols-2 md:grid-cols-3 gap-3'>
+              <div className='col-span-2 md:col-span-3'>
+                <Label htmlFor='bt-name' className='text-xs text-muted-foreground mb-1'>Name</Label>
+                <Input
+                  id='bt-name'
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={runMutation.isPending}
+                  className='h-8 text-sm'
+                />
+              </div>
+
+              <div>
+                <Label htmlFor='bt-topn' className='text-xs text-muted-foreground mb-1'>Top N</Label>
+                <Input
+                  id='bt-topn'
+                  type='number'
+                  min={5}
+                  max={100}
+                  value={topN}
+                  onChange={(e) => setTopN(Number(e.target.value))}
+                  disabled={runMutation.isPending}
+                  className='h-8 text-sm'
+                />
+              </div>
+
+              <div>
+                <Label htmlFor='bt-step' className='text-xs text-muted-foreground mb-1'>Step (trading days)</Label>
+                <Input
+                  id='bt-step'
+                  type='number'
+                  min={1}
+                  max={10}
+                  value={step}
+                  onChange={(e) => setStep(Number(e.target.value))}
+                  disabled={runMutation.isPending}
+                  className='h-8 text-sm'
+                />
+              </div>
+
+              <div>
+                <Label htmlFor='bt-minmcap' className='text-xs text-muted-foreground mb-1'>Min Market Cap (Cr)</Label>
+                <Input
+                  id='bt-minmcap'
+                  type='number'
+                  min={0}
+                  placeholder='₹ Crores'
+                  value={minMcap || ''}
+                  onChange={(e) => setMinMcap(Number(e.target.value))}
+                  disabled={runMutation.isPending}
+                  className='h-8 text-sm'
+                />
+              </div>
+
+              <div>
+                <Label htmlFor='bt-maxmcap' className='text-xs text-muted-foreground mb-1'>Max Market Cap (Cr)</Label>
+                <Input
+                  id='bt-maxmcap'
+                  type='number'
+                  min={0}
+                  placeholder='₹ Crores'
+                  value={maxMcap || ''}
+                  onChange={(e) => setMaxMcap(Number(e.target.value))}
+                  disabled={runMutation.isPending}
+                  className='h-8 text-sm'
+                />
+              </div>
+            </div>
+
+            <div className='flex items-center gap-2 mt-4'>
+              <Button onClick={handleRun} disabled={runMutation.isPending} size='sm' className='h-8 px-5'>
+                {runMutation.isPending ? (
+                  <>
+                    <RefreshCw size={12} className='mr-1.5 animate-spin' />
+                    Running…
+                  </>
+                ) : (
+                  'Run Backtest'
+                )}
+              </Button>
+              <Button
+                variant='ghost'
+                size='sm'
+                className='h-8 px-4'
+                onClick={() => setShowConfig(false)}
+                disabled={runMutation.isPending}
+              >
+                Cancel
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Content */}
       <div className='flex-1 overflow-auto'>
@@ -105,7 +230,7 @@ export function BacktestsListPage() {
 
           {runs && runs.length === 0 && (
             <div className='flex items-center justify-center h-32 text-muted-foreground text-sm'>
-              No backtest runs yet. Click "Run New Backtest" to start.
+              No backtest runs yet. Click "New Backtest" to start.
             </div>
           )}
 

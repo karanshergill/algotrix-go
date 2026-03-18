@@ -13,7 +13,7 @@ async function fetchBacktestDetail(id: string): Promise<BacktestRunDetail> {
   return res.json()
 }
 
-async function runBacktest(config: { type?: string; name?: string; config?: { top_n?: number; step?: number } }): Promise<BacktestRun> {
+async function runBacktest(config: { type?: string; name?: string; config?: { top_n?: number; step?: number; min_mcap?: number; max_mcap?: number } }): Promise<BacktestRun> {
   const res = await fetch('/api/backtests/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
