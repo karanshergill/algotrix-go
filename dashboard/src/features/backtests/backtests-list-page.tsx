@@ -10,6 +10,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { HeaderToolbar } from '@/components/layout/header-toolbar'
 import { Badge } from '@/components/ui/badge'
 import { useBacktests, useRunBacktest, useDeleteBacktest } from './use-backtests'
+import { WatchlistWeightSliders } from '../watchlist/watchlist-weight-sliders'
+import { DEFAULT_WEIGHTS } from '../watchlist/types'
+import type { MetricWeights } from '../watchlist/types'
 import type { BacktestRun } from './types'
 
 function statusBadge(status: BacktestRun['status']) {
@@ -50,6 +53,10 @@ export function BacktestsListPage() {
   const [step, setStep] = useState(1)
   const [minMcap, setMinMcap] = useState(0)
   const [maxMcap, setMaxMcap] = useState(0)
+  const [lookback, setLookback] = useState(30)
+  const [madtvFloor, setMadtvFloor] = useState(100)
+  const [minScore, setMinScore] = useState(0)
+  const [weights, setWeights] = useState<MetricWeights>({ ...DEFAULT_WEIGHTS })
 
   const openConfig = () => {
     setName(`Builder Backtest ${format(new Date(), 'yyyy-MM-dd HH:mm')}`)
@@ -57,6 +64,10 @@ export function BacktestsListPage() {
     setStep(1)
     setMinMcap(0)
     setMaxMcap(0)
+    setLookback(30)
+    setMadtvFloor(100)
+    setMinScore(0)
+    setWeights({ ...DEFAULT_WEIGHTS })
     setShowConfig(true)
   }
 
@@ -70,6 +81,10 @@ export function BacktestsListPage() {
           step,
           min_mcap: minMcap || undefined,
           max_mcap: maxMcap || undefined,
+          lookback,
+          madtv_floor: madtvFloor * 1e7,
+          min_score: minScore || undefined,
+          weights,
         },
       },
       {
@@ -191,6 +206,60 @@ export function BacktestsListPage() {
                 />
               </div>
             </div>
+
+            {/* Scoring section */}
+            <div className='flex items-center gap-2 mt-4 mb-3'>
+              <ChevronDown size={14} className='text-muted-foreground' />
+              <span className='text-sm font-medium'>Scoring</span>
+            </div>
+
+            <div className='grid grid-cols-2 md:grid-cols-3 gap-3 mb-3'>
+              <div>
+                <Label htmlFor='bt-lookback' className='text-xs text-muted-foreground mb-1'>Lookback Days</Label>
+                <Input
+                  id='bt-lookback'
+                  type='number'
+                  min={10}
+                  max={120}
+                  value={lookback}
+                  onChange={(e) => setLookback(Number(e.target.value))}
+                  disabled={runMutation.isPending}
+                  className='h-8 text-sm'
+                />
+              </div>
+
+              <div>
+                <Label htmlFor='bt-madtv' className='text-xs text-muted-foreground mb-1'>Min MADTV (₹Cr)</Label>
+                <Input
+                  id='bt-madtv'
+                  type='number'
+                  min={0}
+                  value={madtvFloor || ''}
+                  onChange={(e) => setMadtvFloor(Number(e.target.value))}
+                  disabled={runMutation.isPending}
+                  className='h-8 text-sm'
+                />
+              </div>
+
+              <div>
+                <Label htmlFor='bt-minscore' className='text-xs text-muted-foreground mb-1'>Min Score (0-100)</Label>
+                <Input
+                  id='bt-minscore'
+                  type='number'
+                  min={0}
+                  max={80}
+                  value={minScore || ''}
+                  onChange={(e) => setMinScore(Number(e.target.value))}
+                  disabled={runMutation.isPending}
+                  className='h-8 text-sm'
+                />
+              </div>
+            </div>
+
+            <WatchlistWeightSliders
+              weights={weights}
+              onChange={setWeights}
+            />
 
             <div className='flex items-center gap-2 mt-4'>
               <Button onClick={handleRun} disabled={runMutation.isPending} size='sm' className='h-8 px-5'>

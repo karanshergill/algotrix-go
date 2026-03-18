@@ -54,7 +54,16 @@ backtest.post('/run', async (c) => {
   const body = await c.req.json<{
     type?: string
     name?: string
-    config?: { top_n?: number; step?: number; min_mcap?: number; max_mcap?: number }
+    config?: {
+      top_n?: number
+      step?: number
+      min_mcap?: number
+      max_mcap?: number
+      lookback?: number
+      madtv_floor?: number
+      min_score?: number
+      weights?: Record<string, number>
+    }
   }>()
 
   const type = body.type ?? 'builder'
@@ -63,13 +72,23 @@ backtest.post('/run', async (c) => {
   const step = body.config?.step ?? 1
   const minMcap = body.config?.min_mcap ?? 0
   const maxMcap = body.config?.max_mcap ?? 0
+  const lookback = body.config?.lookback
+  const madtvFloor = body.config?.madtv_floor
+  const minScore = body.config?.min_score
+  const weights = body.config?.weights
+
+  const configJson: Record<string, unknown> = { top_n: topN, step, min_mcap: minMcap, max_mcap: maxMcap }
+  if (lookback != null) configJson.lookback = lookback
+  if (madtvFloor != null) configJson.madtv_floor = madtvFloor
+  if (minScore != null) configJson.min_score = minScore
+  if (weights) configJson.weights = weights
 
   // Create run record
   const runResult = await pool.query(
     `INSERT INTO backtest_runs (type, name, config, status, created_by)
      VALUES ($1, $2, $3, 'running', 'manual')
      RETURNING id, started_at`,
-    [type, name, JSON.stringify({ top_n: topN, step, min_mcap: minMcap, max_mcap: maxMcap })]
+    [type, name, JSON.stringify(configJson)]
   )
   const runId = runResult.rows[0].id
 
@@ -78,6 +97,10 @@ backtest.post('/run', async (c) => {
     const args = ['backtest', '--json', '--top', String(topN), '--step', String(step)]
     if (minMcap > 0) args.push('--min-mcap', String(minMcap))
     if (maxMcap > 0) args.push('--max-mcap', String(maxMcap))
+    if (lookback != null) args.push('--lookback', String(lookback))
+    if (madtvFloor != null) args.push('--madtv-floor', String(madtvFloor))
+    if (minScore != null) args.push('--min-score', String(minScore))
+    if (weights) args.push('--weights', JSON.stringify(weights))
     const { stdout } = await execFileAsync(ENGINE_BIN, args, {
       cwd: ENGINE_DIR,
       timeout: 300_000,

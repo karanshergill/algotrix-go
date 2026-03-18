@@ -87,6 +87,11 @@ export type MetricWeights = {
   rangeEff: number
   parkinson: number
   momentum: number
+  beta: number
+  rs: number
+  gap: number
+  volRatio: number
+  emaSlope: number
 }
 
 export const DEFAULT_WEIGHTS: MetricWeights = {
@@ -98,6 +103,11 @@ export const DEFAULT_WEIGHTS: MetricWeights = {
   rangeEff: 17,
   parkinson: 12,
   momentum: 13,
+  beta: 7,
+  rs: 8,
+  gap: 6,
+  volRatio: 7,
+  emaSlope: 7,
 }
 
 export type MetricFilters = {

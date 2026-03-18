@@ -2,7 +2,16 @@ export type BacktestRun = {
   id: number
   type: string
   name: string
-  config: { top_n: number; step: number; min_mcap?: number; max_mcap?: number }
+  config: {
+    top_n: number
+    step: number
+    min_mcap?: number
+    max_mcap?: number
+    lookback?: number
+    madtv_floor?: number
+    min_score?: number
+    weights?: Record<string, number>
+  }
   status: 'running' | 'completed' | 'failed'
   summary: Record<string, HorizonSummary> | null
   build_dates_tested: number | null

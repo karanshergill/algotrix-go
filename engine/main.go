@@ -832,6 +832,7 @@ func runBacktest() {
 	cfg := watchlist.DefaultBacktestConfig()
 	jsonOutput := false
 	var minMcapCr, maxMcapCr float64
+	var weightsJSON string
 
 	for i, arg := range os.Args {
 		switch arg {
@@ -851,6 +852,22 @@ func runBacktest() {
 			if i+1 < len(os.Args) {
 				if v, err := strconv.ParseFloat(os.Args[i+1], 64); err == nil { maxMcapCr = v }
 			}
+		case "--lookback":
+			if i+1 < len(os.Args) {
+				if v, err := strconv.Atoi(os.Args[i+1]); err == nil { cfg.BuildConfig.LookbackDays = v }
+			}
+		case "--madtv-floor":
+			if i+1 < len(os.Args) {
+				if v, err := strconv.ParseFloat(os.Args[i+1], 64); err == nil { cfg.BuildConfig.MADTVFloor = v }
+			}
+		case "--min-score":
+			if i+1 < len(os.Args) {
+				if v, err := strconv.ParseFloat(os.Args[i+1], 64); err == nil { cfg.BuildConfig.MinCompositeScore = v }
+			}
+		case "--weights":
+			if i+1 < len(os.Args) {
+				weightsJSON = os.Args[i+1]
+			}
 		case "--json":
 			jsonOutput = true
 		}
@@ -859,6 +876,39 @@ func runBacktest() {
 	// Convert crores to rupees (1 Cr = 1e7).
 	cfg.BuildConfig.MinMarketCap = minMcapCr * 1e7
 	cfg.BuildConfig.MaxMarketCap = maxMcapCr * 1e7
+
+	// Parse custom weights JSON: {"madtv":10,"amihud":10,"atrPct":10,...}
+	// Values are raw (0-100), auto-normalized to sum to 1.0.
+	if weightsJSON != "" {
+		var raw map[string]float64
+		if err := json.Unmarshal([]byte(weightsJSON), &raw); err == nil {
+			var total float64
+			for _, v := range raw {
+				total += v
+			}
+			if total > 0 {
+				norm := func(key string) float64 {
+					if v, ok := raw[key]; ok {
+						return v / total
+					}
+					return 0
+				}
+				cfg.BuildConfig.WeightMADTV = norm("madtv")
+				cfg.BuildConfig.WeightAmihud = norm("amihud")
+				cfg.BuildConfig.WeightTradeSize = norm("tradeSize")
+				cfg.BuildConfig.WeightATRPct = norm("atrPct")
+				cfg.BuildConfig.WeightADRPct = norm("adrPct")
+				cfg.BuildConfig.WeightRangeEff = norm("rangeEff")
+				cfg.BuildConfig.WeightParkinson = norm("parkinson")
+				cfg.BuildConfig.WeightMomentum = norm("momentum")
+				cfg.BuildConfig.WeightBeta = norm("beta")
+				cfg.BuildConfig.WeightRS = norm("rs")
+				cfg.BuildConfig.WeightGap = norm("gap")
+				cfg.BuildConfig.WeightVolRatio = norm("volRatio")
+				cfg.BuildConfig.WeightEMASlope = norm("emaSlope")
+			}
+		}
+	}
 
 	// DB connection.
 	dbCfg, err := conns.LoadDBConfig("db/conns/db.yaml")

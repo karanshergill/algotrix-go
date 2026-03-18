@@ -48,6 +48,11 @@ export function WatchlistBuilderPage() {
           rangeEff: w.rangeEff ?? DEFAULT_WEIGHTS.rangeEff,
           parkinson: w.parkinson ?? DEFAULT_WEIGHTS.parkinson,
           momentum: w.momentum ?? DEFAULT_WEIGHTS.momentum,
+          beta: w.beta ?? DEFAULT_WEIGHTS.beta,
+          rs: w.rs ?? DEFAULT_WEIGHTS.rs,
+          gap: w.gap ?? DEFAULT_WEIGHTS.gap,
+          volRatio: w.volRatio ?? DEFAULT_WEIGHTS.volRatio,
+          emaSlope: w.emaSlope ?? DEFAULT_WEIGHTS.emaSlope,
         },
       })
       setHydrated(true)
@@ -73,6 +78,11 @@ export function WatchlistBuilderPage() {
     rangeEff: engineDefaults.weights.rangeEff ?? DEFAULT_WEIGHTS.rangeEff,
     parkinson: engineDefaults.weights.parkinson ?? DEFAULT_WEIGHTS.parkinson,
     momentum: engineDefaults.weights.momentum ?? DEFAULT_WEIGHTS.momentum,
+    beta: engineDefaults.weights.beta ?? DEFAULT_WEIGHTS.beta,
+    rs: engineDefaults.weights.rs ?? DEFAULT_WEIGHTS.rs,
+    gap: engineDefaults.weights.gap ?? DEFAULT_WEIGHTS.gap,
+    volRatio: engineDefaults.weights.volRatio ?? DEFAULT_WEIGHTS.volRatio,
+    emaSlope: engineDefaults.weights.emaSlope ?? DEFAULT_WEIGHTS.emaSlope,
   } : undefined
 
   const handleBuild = () => {

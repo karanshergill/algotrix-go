@@ -9,7 +9,7 @@ type Props = {
   defaults?: MetricWeights
 }
 
-const METRICS: { key: keyof MetricWeights; label: string; group: 'T' | 'O' }[] = [
+const METRICS: { key: keyof MetricWeights; label: string; group: 'T' | 'O' | 'M' }[] = [
   { key: 'madtv', label: 'MADTV', group: 'T' },
   { key: 'amihud', label: 'Amihud', group: 'T' },
   { key: 'tradeSize', label: 'Trade Size', group: 'T' },
@@ -18,6 +18,11 @@ const METRICS: { key: keyof MetricWeights; label: string; group: 'T' | 'O' }[] =
   { key: 'rangeEff', label: 'Range Eff', group: 'O' },
   { key: 'parkinson', label: 'Parkinson', group: 'O' },
   { key: 'momentum', label: 'Momentum', group: 'O' },
+  { key: 'beta', label: 'Beta', group: 'M' },
+  { key: 'rs', label: 'RS', group: 'M' },
+  { key: 'gap', label: 'Gap%', group: 'M' },
+  { key: 'volRatio', label: 'Vol Ratio', group: 'M' },
+  { key: 'emaSlope', label: 'EMA Slope', group: 'M' },
 ]
 
 function pct(value: number, total: number): string {
@@ -31,6 +36,7 @@ export function WatchlistWeightSliders({ weights, onChange, defaults }: Props) {
 
   const tradabilitySum = METRICS.filter(m => m.group === 'T').reduce((s, m) => s + weights[m.key], 0)
   const opportunitySum = METRICS.filter(m => m.group === 'O').reduce((s, m) => s + weights[m.key], 0)
+  const marketCtxSum = METRICS.filter(m => m.group === 'M').reduce((s, m) => s + weights[m.key], 0)
 
   return (
     <div className='space-y-2'>
@@ -40,7 +46,7 @@ export function WatchlistWeightSliders({ weights, onChange, defaults }: Props) {
             Scoring Weights
           </h4>
           <span className='text-[10px] text-muted-foreground/50'>
-            Tradability {pct(tradabilitySum, total)} · Opportunity {pct(opportunitySum, total)}
+            Tradability {pct(tradabilitySum, total)} · Opportunity {pct(opportunitySum, total)} · Market Ctx {pct(marketCtxSum, total)}
           </span>
         </div>
         <Button
