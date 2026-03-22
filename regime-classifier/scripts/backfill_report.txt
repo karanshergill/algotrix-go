@@ -1,0 +1,81 @@
+======================================================================
+BACKFILL VALIDATION REPORT
+Generated: 2026-03-22T18:56:33.951548
+======================================================================
+
+Dates attempted:  1
+Dates succeeded:  1
+Dates failed:     0
+Dates holiday:    0
+
+--- CM ---
+  Total parsed:   2432
+  Total inserted: 432
+  Holidays:       0
+  Errors:         0
+  Monthly breakdown:
+    2026-03: parsed=2432, inserted=432
+
+--- IDX ---
+  Total parsed:   147
+  Total inserted: 147
+  Holidays:       0
+  Errors:         0
+  Monthly breakdown:
+    2026-03: parsed=147, inserted=147
+
+--- FO ---
+  Total parsed:   50760
+  Total inserted: 25260
+  Holidays:       0
+  Errors:         0
+  Monthly breakdown:
+    2026-03: parsed=50760, inserted=25260
+
+nse_cm_bhavcopy: 2,772,422 total rows
+  2020: 376,705
+  2021: 389,770
+  2022: 438,894
+  2023: 445,186
+  2024: 461,929
+  2025: 529,758
+  2026: 130,180
+  Date range: 2020-01-01 to 2026-03-20
+
+nse_indices_daily: 164,582 total rows
+  2020: 20,683
+  2021: 22,013
+  2022: 24,752
+  2023: 26,041
+  2024: 28,752
+  2025: 34,514
+  2026: 7,827
+  Date range: 2020-01-01 to 2026-03-20
+
+nse_fo_bhavcopy: 72,425,132 total rows
+  2020: 9,086,706
+  2021: 13,612,920
+  2022: 16,009,782
+  2023: 12,753,556
+  2024: 9,839,688
+  2025: 8,739,860
+  2026: 2,382,620
+  Date range: 2020-01-01 to 2026-03-20
+
+--- SANITY CHECKS ---
+  2020-03-23 in nse_cm_bhavcopy: 1548 rows ✓
+  2020-03-23 in nse_indices_daily: 81 rows ✓
+  2020-03-23 in nse_fo_bhavcopy: 45031 rows ✓
+  2020-01-02 in nse_cm_bhavcopy: 1490 rows ✓
+  2020-01-02 in nse_indices_daily: 79 rows ✓
+  2020-01-02 in nse_fo_bhavcopy: 31835 rows ✓
+  2024-01-02 in nse_cm_bhavcopy: 1815 rows ✓
+  2024-01-02 in nse_indices_daily: 108 rows ✓
+  2024-01-02 in nse_fo_bhavcopy: 57054 rows ✓
+
+--- DATE GAP ANALYSIS (CM Bhavcopy) ---
+  First date: 2020-01-01
+  Last date:  2025-08-29
+  Total trading days: 1401
+  Gaps > 4 days (1):
+    2022-04-13 → 2022-04-18 (5 days)
