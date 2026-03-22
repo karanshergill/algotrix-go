@@ -1,425 +1,402 @@
-"""Two-Stage Walk-Forward Regime Predictor with v2 Features.
+"""Two-stage regime predictor with abstention.
 
-Stage 1: Trending vs Range (binary)
-Stage 2: Up vs Down (binary, conditional on Stage 1 = Trending)
-Combined: 3-class output (Trend-Up / Range / Trend-Down)
+Stage 1: Trend vs Range (binary) — if confidence < threshold → ABSTAIN
+Stage 2: Trend-Up vs Trend-Down (binary, conditional on Stage 1) — if confidence < 0.60 → Trend-Unknown
 
-Compares against single-stage E3 baseline.
+Final classes: Trend-Up, Trend-Down, Trend-Unknown, Range, Uncertain
+
+Comparison against baseline single-stage 3-class XGBoost.
 """
 
 import numpy as np
 import pandas as pd
 import psycopg2
-from sklearn.metrics import accuracy_score, f1_score, classification_report
+from pathlib import Path
+from collections import Counter
 from xgboost import XGBClassifier
 
-DB_DSN = "host=localhost dbname=atdb user=me password=algotrix"
-CSV_PATH = "/home/me/projects/algotrix-go/regime-classifier/data/preopen_feature_matrix.csv"
+from src.preopen_features import PREOPEN_FEATURE_COLS
 
-MIN_TRAIN_DAYS = 126
-RETRAIN_INTERVAL = 63
+# --- Config ---
+MIN_TRAIN = 126
+RETRAIN_EVERY = 63
+V1_FEATURES = PREOPEN_FEATURE_COLS[:27]
 
-# Original 27 features from pre-open CSV
-ORIG_FEATURES = [
-    "gift_overnight_gap_pct", "gift_overnight_range_pct",
-    "gift_overnight_oi_change_pct", "gift_overnight_volume_conviction",
-    "gift_overnight_vol_delta", "prev_nifty_return", "prev_nifty_return_5d",
-    "prev_nifty_return_20d", "prev_vix_close", "prev_vix_change_pct",
-    "prev_ad_ratio", "prev_breadth_turnover_weighted", "prev_pcr_oi",
-    "prev_max_pain_distance_pct", "prev_fii_net_idx_fut", "prev_fii_net_total",
-    "prev_dii_net_total", "prev_fii_options_skew", "prev_index_divergence_500",
-    "prev_index_divergence_midcap", "prev_coincident_regime",
-    "sp500_overnight_return", "usdinr_overnight_change", "day_of_week",
-    "days_to_monthly_expiry", "is_expiry_week", "prev_day_range_pct",
-]
+XGB_PARAMS = dict(
+    max_depth=4, n_estimators=200, learning_rate=0.05,
+    subsample=0.8, use_label_encoder=False, verbosity=0, random_state=42,
+)
 
-# New v2 features
-V2_FEATURES = [
-    "range_compression", "bb_width_20d", "range_contraction_streak",
-    "vix_percentile", "vix_zscore_20d",
-    "momentum_divergence", "momentum_acceleration",
-    "volume_trend", "vol_breadth_confirmation",
-    "is_monday", "days_to_month_end", "week_of_month",
-]
+E3_LABEL_MAP = {"Trend-Down": 0, "Range": 1, "Trend-Up": 2}
+E3_LABEL_INV = {0: "Trend-Down", 1: "Range", 2: "Trend-Up"}
+
+STAGE1_THRESHOLDS = [0.50, 0.55, 0.60, 0.65, 0.70]
+STAGE2_THRESHOLD = 0.60
 
 
-def load_db_data():
-    """Load raw data from DB for v2 feature computation."""
-    conn = psycopg2.connect(DB_DSN)
+def load_data():
+    """Load features from CSV and labels from DB, merge on date."""
+    csv_path = Path(__file__).resolve().parent.parent / "data" / "preopen_feature_matrix.csv"
+    features = pd.read_csv(csv_path, parse_dates=["date"])
+    features["date"] = features["date"].dt.date
 
-    nifty = pd.read_sql(
-        "SELECT date, open, high, low, close, volume FROM nse_indices_daily "
-        "WHERE index = 'Nifty 50' ORDER BY date",
-        conn, parse_dates=["date"],
-    )
+    conn = psycopg2.connect(host="localhost", user="me", password="algotrix", dbname="atdb")
+    try:
+        labels = pd.read_sql(
+            "SELECT date, coincident_label, nifty_return FROM regime_ground_truth ORDER BY date",
+            conn,
+        )
+    finally:
+        conn.close()
 
-    vix = pd.read_sql(
-        "SELECT date, close as vix_close FROM nse_vix_daily ORDER BY date",
-        conn, parse_dates=["date"],
-    )
+    labels["date"] = pd.to_datetime(labels["date"]).dt.date
+    df = labels.merge(features, on="date", how="inner", suffixes=("", "_feat")).sort_values("date").reset_index(drop=True)
+    df = df[df["coincident_label"].isin(["Trend-Up", "Range", "Trend-Down"])].reset_index(drop=True)
 
-    breadth = pd.read_sql(
-        """SELECT date,
-           SUM(CASE WHEN close > prev_close THEN 1 ELSE 0 END)::float /
-           NULLIF(SUM(CASE WHEN close != prev_close THEN 1 ELSE 0 END), 0) as breadth_ratio_raw
-        FROM nse_cm_bhavcopy GROUP BY date ORDER BY date""",
-        conn, parse_dates=["date"],
-    )
-
-    labels = pd.read_sql(
-        "SELECT date, coincident_label, nifty_return FROM regime_ground_truth ORDER BY date",
-        conn, parse_dates=["date"],
-    )
-
-    conn.close()
-    return nifty, vix, breadth, labels
+    print(f"Loaded {len(df)} days with features + labels")
+    dist = df["coincident_label"].value_counts()
+    for lbl, cnt in dist.items():
+        print(f"  {lbl:<12} {cnt:>5} ({cnt/len(df)*100:.1f}%)")
+    return df
 
 
-def compute_v2_features(nifty, vix, breadth):
-    """Compute v2 feature set from raw DB data."""
-    df = nifty.sort_values("date").reset_index(drop=True)
-
-    df["prev_close"] = df["close"].shift(1)
-    df["return_pct"] = df["close"] / df["prev_close"] - 1
-    day_range = df["high"] - df["low"]
-    df["range_pct"] = day_range / df["close"] * 100
-
-    # --- Compression/Tension ---
-    rolling_range_20 = df["range_pct"].rolling(20).mean()
-    df["range_compression"] = df["range_pct"] / rolling_range_20
-
-    df["bb_width_20d"] = df["return_pct"].rolling(20).std() * 2
-
-    # Range contraction streak
-    below_avg = (df["range_pct"] < rolling_range_20).astype(int)
-    streak = np.zeros(len(df))
-    for i in range(1, len(df)):
-        if below_avg.iloc[i] == 1:
-            streak[i] = streak[i - 1] + 1
-        else:
-            streak[i] = 0
-    df["range_contraction_streak"] = streak
-
-    # --- VIX Regime ---
-    df = df.merge(vix, on="date", how="left")
-
-    # VIX percentile rank (trailing 252 days)
-    vix_vals = df["vix_close"].values
-    vix_pct = np.full(len(df), np.nan)
-    for i in range(1, len(df)):
-        start = max(0, i - 252)
-        window = vix_vals[start:i]
-        valid = window[~np.isnan(window)]
-        if len(valid) > 0:
-            vix_pct[i] = np.mean(valid <= vix_vals[i])
-    df["vix_percentile"] = vix_pct
-
-    vix_mean_20 = df["vix_close"].rolling(20).mean()
-    vix_std_20 = df["vix_close"].rolling(20).std()
-    df["vix_zscore_20d"] = (df["vix_close"] - vix_mean_20) / vix_std_20
-
-    # --- Momentum Divergence ---
-    ret_5d = df["return_pct"].rolling(5).sum()
-    ret_20d = df["return_pct"].rolling(20).sum()
-    df["momentum_divergence"] = (np.sign(ret_5d) != np.sign(ret_20d)).astype(float)
-    df["momentum_acceleration"] = ret_5d - (ret_20d / 4)
-
-    # --- Volume Profile ---
-    vol_5d = df["volume"].rolling(5).mean()
-    vol_20d = df["volume"].rolling(20).mean()
-    df["volume_trend"] = vol_5d / vol_20d
-
-    df = df.merge(breadth, on="date", how="left")
-    df["vol_breadth_confirmation"] = df["breadth_ratio_raw"].fillna(0.5) * df["volume_trend"]
-
-    # --- Calendar Enhanced ---
-    df["is_monday"] = (df["date"].dt.dayofweek == 0).astype(float)
-
-    # Business days to month end
-    days_to_me = np.zeros(len(df))
-    for i in range(len(df)):
-        d = df["date"].iloc[i]
-        month_end = d + pd.offsets.MonthEnd(0)
-        bdays = np.busday_count(d.date(), month_end.date())
-        days_to_me[i] = max(bdays, 0)
-    df["days_to_month_end"] = days_to_me
-
-    df["week_of_month"] = ((df["date"].dt.day - 1) // 7 + 1).astype(float)
-
-    # Shift all v2 features by 1 day (use previous day's values for prediction)
-    for col in V2_FEATURES:
-        if col not in ("is_monday", "days_to_month_end", "week_of_month"):
-            df[col] = df[col].shift(1)
-
-    return df[["date"] + V2_FEATURES]
+def get_feature_matrix(df):
+    """Extract v1 feature columns, fill NaN with 0."""
+    feat_cols = [c for c in V1_FEATURES if c in df.columns]
+    return df[feat_cols].fillna(0).values, feat_cols
 
 
-def walk_forward_single_stage(df, feature_cols, label_map, inv_map):
-    """Single-stage 3-class walk-forward (E3 baseline)."""
-    valid = df.dropna(subset=["coincident_label"]).copy().reset_index(drop=True)
-    valid["_target"] = valid["coincident_label"].map(label_map)
-    valid = valid.dropna(subset=["_target"]).reset_index(drop=True)
+# =============================================================================
+# Baseline: single-stage 3-class XGBoost
+# =============================================================================
 
-    results = []
+def walk_forward_baseline(X, y_3class):
+    """Walk-forward 3-class XGBoost. Returns predictions and probabilities."""
+    n = len(y_3class)
+    preds = np.full(n, np.nan)
+    probs = np.full((n, 3), np.nan)
     model = None
-    last_train_end = -1
+    last_train = -1
 
-    for i in range(MIN_TRAIN_DAYS, len(valid)):
-        if model is None or (i - last_train_end) >= RETRAIN_INTERVAL:
-            train = valid.iloc[:i]
-            X_train = train[feature_cols].fillna(0).values
-            y_train = train["_target"].astype(int).values
+    for i in range(MIN_TRAIN, n):
+        if model is None or (i - last_train) >= RETRAIN_EVERY:
             model = XGBClassifier(
-                max_depth=4, n_estimators=200, learning_rate=0.05,
-                subsample=0.8, use_label_encoder=False,
-                eval_metric="mlogloss", objective="multi:softprob",
-                num_class=3, verbosity=0, random_state=42,
+                **XGB_PARAMS, objective="multi:softprob",
+                eval_metric="mlogloss", num_class=3,
             )
-            model.fit(X_train, y_train)
-            last_train_end = i
+            model.fit(X[:i], y_3class[:i])
+            last_train = i
 
-        row = valid.iloc[i]
-        X_test = pd.DataFrame([row[feature_cols].fillna(0)]).values
-        pred = model.predict(X_test)[0]
-        proba = model.predict_proba(X_test)[0]
+        preds[i] = model.predict(X[i:i+1])[0]
+        probs[i] = model.predict_proba(X[i:i+1])[0]
 
-        results.append({
-            "date": row["date"],
-            "actual": int(row["_target"]),
-            "predicted": int(pred),
-            "confidence": float(proba.max()),
-            "nifty_return": row.get("nifty_return"),
-        })
-
-    return pd.DataFrame(results), model
+    return preds, probs
 
 
-def walk_forward_two_stage(df, feature_cols):
-    """Two-stage walk-forward: Stage 1 (Trending/Range) + Stage 2 (Up/Down)."""
-    valid = df.dropna(subset=["coincident_label"]).copy().reset_index(drop=True)
+# =============================================================================
+# Two-stage model
+# =============================================================================
 
-    # Stage 1 labels: Trending (1) vs Range (0)
-    valid["_s1_target"] = valid["coincident_label"].map(
-        {"Trend-Up": 1, "Trend-Down": 1, "Range": 0}
-    )
-    # Stage 2 labels: Up (1) vs Down (0) — only for trending days
-    valid["_s2_target"] = valid["coincident_label"].map(
-        {"Trend-Up": 1, "Trend-Down": 0}
-    )
+def walk_forward_two_stage(X, y_3class, stage1_threshold=0.55):
+    """Walk-forward two-stage model.
 
-    valid = valid.dropna(subset=["_s1_target"]).reset_index(drop=True)
+    Stage 1: Trend(1) vs Range(0)  — binary
+    Stage 2: Trend-Up(1) vs Trend-Down(0) — binary, only on trend days
 
-    results = []
-    s1_model = None
-    s2_model = None
-    s1_last_train = -1
-    s2_last_train = -1
+    Returns per-day: final_pred (str), stage1_pred, stage1_conf, stage2_pred, stage2_conf
+    """
+    n = len(y_3class)
 
-    # 3-class label for evaluation
-    label_3c = {"Trend-Down": 0, "Range": 1, "Trend-Up": 2}
+    # Derived targets
+    # Stage 1: Trend (Trend-Up or Trend-Down) = 1, Range = 0
+    y_s1 = np.where(y_3class == 1, 0, 1).astype(int)  # Range(1 in 3class)→0, else→1
 
-    for i in range(MIN_TRAIN_DAYS, len(valid)):
-        # --- Stage 1: Trending vs Range ---
-        if s1_model is None or (i - s1_last_train) >= RETRAIN_INTERVAL:
-            train = valid.iloc[:i]
-            X_train = train[feature_cols].fillna(0).values
-            y_train = train["_s1_target"].astype(int).values
-            s1_model = XGBClassifier(
-                max_depth=4, n_estimators=200, learning_rate=0.05,
-                subsample=0.8, use_label_encoder=False,
-                eval_metric="logloss", objective="binary:logistic",
-                verbosity=0, random_state=42,
+    # Stage 2: Trend-Up(2 in 3class)→1, Trend-Down(0 in 3class)→0
+    # Only defined for trend days
+    y_s2 = np.where(y_3class == 2, 1, 0).astype(int)  # only meaningful where y_s1==1
+    trend_mask_full = y_s1 == 1  # which days are actually trending
+
+    # Output arrays
+    final_pred = np.full(n, "", dtype=object)
+    s1_pred = np.full(n, np.nan)
+    s1_conf = np.full(n, np.nan)
+    s2_pred = np.full(n, np.nan)
+    s2_conf = np.full(n, np.nan)
+
+    model_s1 = None
+    model_s2 = None
+    last_train_s1 = -1
+    last_train_s2 = -1
+
+    for i in range(MIN_TRAIN, n):
+        # --- Retrain Stage 1 ---
+        if model_s1 is None or (i - last_train_s1) >= RETRAIN_EVERY:
+            model_s1 = XGBClassifier(
+                **XGB_PARAMS, objective="binary:logistic", eval_metric="logloss",
             )
-            s1_model.fit(X_train, y_train)
-            s1_last_train = i
+            model_s1.fit(X[:i], y_s1[:i])
+            last_train_s1 = i
 
-        # --- Stage 2: Up vs Down (only trending days in training) ---
-        if s2_model is None or (i - s2_last_train) >= RETRAIN_INTERVAL:
-            train = valid.iloc[:i]
-            trending_mask = train["_s2_target"].notna()
-            if trending_mask.sum() >= 30:
-                train_trending = train[trending_mask]
-                X_train_s2 = train_trending[feature_cols].fillna(0).values
-                y_train_s2 = train_trending["_s2_target"].astype(int).values
-                s2_model = XGBClassifier(
-                    max_depth=4, n_estimators=200, learning_rate=0.05,
-                    subsample=0.8, use_label_encoder=False,
-                    eval_metric="logloss", objective="binary:logistic",
-                    verbosity=0, random_state=42,
+        # --- Retrain Stage 2 (only on trend days) ---
+        if model_s2 is None or (i - last_train_s2) >= RETRAIN_EVERY:
+            trend_train = trend_mask_full[:i]
+            if trend_train.sum() >= 20:  # need enough trend days
+                model_s2 = XGBClassifier(
+                    **XGB_PARAMS, objective="binary:logistic", eval_metric="logloss",
                 )
-                s2_model.fit(X_train_s2, y_train_s2)
-                s2_last_train = i
+                model_s2.fit(X[:i][trend_train], y_s2[:i][trend_train])
+                last_train_s2 = i
 
-        row = valid.iloc[i]
-        X_test = pd.DataFrame([row[feature_cols].fillna(0)]).values
+        # --- Predict Stage 1 ---
+        s1_prob = model_s1.predict_proba(X[i:i+1])[0]  # [P(Range), P(Trend)]
+        s1_class = int(s1_prob[1] >= 0.5)  # 1=Trend, 0=Range
+        s1_confidence = s1_prob[s1_class]
+        s1_pred[i] = s1_class
+        s1_conf[i] = s1_confidence
 
-        s1_pred = s1_model.predict(X_test)[0]
-        s1_proba = s1_model.predict_proba(X_test)[0]
-        s1_conf = float(s1_proba.max())
-
-        if s1_pred == 0:
-            # Range
-            combined_pred = 1  # Range in 3-class
-            combined_conf = s1_conf
-        else:
-            # Trending → run Stage 2
-            if s2_model is not None:
-                s2_pred = s2_model.predict(X_test)[0]
-                s2_proba = s2_model.predict_proba(X_test)[0]
-                s2_conf = float(s2_proba.max())
-                combined_pred = 2 if s2_pred == 1 else 0  # Trend-Up=2, Trend-Down=0
-                combined_conf = min(s1_conf, s2_conf)
-            else:
-                # Fallback: no S2 model yet, predict Range
-                combined_pred = 1
-                combined_conf = s1_conf
-
-        actual_3c = label_3c.get(row["coincident_label"])
-        if actual_3c is None:
+        if s1_confidence < stage1_threshold:
+            final_pred[i] = "Uncertain"
             continue
 
-        results.append({
-            "date": row["date"],
-            "actual": actual_3c,
-            "predicted": combined_pred,
-            "confidence": combined_conf,
-            "s1_pred": "Trending" if s1_pred == 1 else "Range",
-            "s1_conf": s1_conf,
-            "nifty_return": row.get("nifty_return"),
-        })
+        if s1_class == 0:
+            final_pred[i] = "Range"
+            continue
 
-    return pd.DataFrame(results), s1_model, s2_model
+        # --- Predict Stage 2 (only if Stage 1 says Trend with confidence) ---
+        if model_s2 is None:
+            final_pred[i] = "Trend-Unknown"
+            continue
+
+        s2_prob = model_s2.predict_proba(X[i:i+1])[0]  # [P(Down), P(Up)]
+        s2_class = int(s2_prob[1] >= 0.5)  # 1=Up, 0=Down
+        s2_confidence = s2_prob[s2_class]
+        s2_pred[i] = s2_class
+        s2_conf[i] = s2_confidence
+
+        if s2_confidence < STAGE2_THRESHOLD:
+            final_pred[i] = "Trend-Unknown"
+        elif s2_class == 1:
+            final_pred[i] = "Trend-Up"
+        else:
+            final_pred[i] = "Trend-Down"
+
+    return final_pred, s1_pred, s1_conf, s2_pred, s2_conf
 
 
-def print_report(name, preds, inv_map):
-    """Print evaluation report for a model."""
-    y_true = preds["actual"].values
-    y_pred = preds["predicted"].values
-    acc = accuracy_score(y_true, y_pred)
-    f1 = f1_score(y_true, y_pred, average="macro", zero_division=0)
-    most_common = pd.Series(y_true).mode()[0]
-    baseline = accuracy_score(y_true, np.full_like(y_true, most_common))
-    prev = np.roll(y_true, 1)
-    prev[0] = most_common
-    persist = accuracy_score(y_true, prev)
+# =============================================================================
+# Evaluation helpers
+# =============================================================================
 
-    print(f"\n{'='*65}")
-    print(f"  {name}")
-    print(f"{'='*65}")
-    print(f"  Accuracy: {acc:.4f} | F1-macro: {f1:.4f} | N={len(preds)}")
-    print(f"  Baseline (most common '{inv_map[most_common]}'): {baseline:.4f}")
-    print(f"  Persistence: {persist:.4f}")
-    print(f"  Margin over baseline: {acc - baseline:+.4f}")
-    print(f"  Margin over persistence: {acc - persist:+.4f}")
+def map_twostage_to_3class(final_preds):
+    """Map two-stage predictions to 3-class for comparison.
+    Trend-Up→2, Trend-Down→0, Range→1, Uncertain/Trend-Unknown→-1 (wrong).
+    """
+    mapping = {"Trend-Up": 2, "Trend-Down": 0, "Range": 1,
+               "Trend-Unknown": -1, "Uncertain": -1, "": np.nan}
+    return np.array([mapping.get(p, np.nan) for p in final_preds])
 
-    labels = sorted(inv_map.keys())
-    label_names = [inv_map[l] for l in labels]
-    print(classification_report(
-        y_true, y_pred, labels=labels, target_names=label_names, zero_division=0
-    ))
 
-    print("  Return separation (by predicted class):")
-    for code in labels:
-        mask = y_pred == code
-        if mask.sum() > 0:
-            mean_ret = preds.loc[mask, "nifty_return"].mean() * 100
-            print(f"    {inv_map[code]:>12s}: {mean_ret:+.3f}% (n={mask.sum()})")
+def compute_metrics(y_true, y_pred_3class, final_preds, nifty_returns, label="Model"):
+    """Compute all comparison metrics."""
+    test_mask = ~np.isnan(y_pred_3class)
+    if final_preds is not None:
+        test_mask = test_mask & np.array([p != "" for p in final_preds])
 
-    print("\n  Confidence analysis:")
-    for t in [0.5, 0.6, 0.7]:
-        hc = preds[preds["confidence"] >= t]
-        if len(hc) > 0:
-            hc_acc = accuracy_score(hc["actual"], hc["predicted"])
-            print(f"    >= {t:.0%}: {hc_acc:.4f} (n={len(hc)}, {len(hc)/len(preds)*100:.0f}%)")
+    yt = y_true[test_mask].astype(int)
+    yp = y_pred_3class[test_mask].astype(int)
+    fp = final_preds[test_mask] if final_preds is not None else None
+    nr = nifty_returns[test_mask]
 
-    return acc, f1, baseline
+    n_test = len(yt)
 
+    # Overall accuracy (treating Uncertain/Trend-Unknown as wrong via -1 mapping)
+    overall_acc = (yt == yp).mean()
+
+    # Committed: exclude Uncertain and Trend-Unknown
+    if fp is not None:
+        committed_mask = np.array([(p not in ("Uncertain", "Trend-Unknown", "")) for p in fp])
+    else:
+        committed_mask = np.ones(n_test, dtype=bool)
+
+    committed_pct = committed_mask.mean() * 100
+    committed_acc = (yt[committed_mask] == yp[committed_mask]).mean() if committed_mask.sum() > 0 else 0
+
+    # Return separation
+    return_sep = {}
+    if fp is not None:
+        classes = ["Trend-Up", "Trend-Down", "Range", "Trend-Unknown", "Uncertain"]
+    else:
+        classes = ["Trend-Up", "Range", "Trend-Down"]
+
+    for cls in classes:
+        if fp is not None:
+            cls_mask = fp == cls
+        else:
+            cls_id = E3_LABEL_MAP.get(cls)
+            if cls_id is None:
+                continue
+            cls_mask = yp == cls_id
+        if cls_mask.sum() > 0:
+            return_sep[cls] = {
+                "mean_return": nr[cls_mask].mean() * 100,
+                "count": int(cls_mask.sum()),
+            }
+
+    return {
+        "label": label,
+        "n_test": n_test,
+        "overall_acc": overall_acc,
+        "committed_acc": committed_acc,
+        "committed_pct": committed_pct,
+        "return_sep": return_sep,
+    }
+
+
+def evaluate_stage_accuracy(y_3class, s1_pred, s2_pred, test_start):
+    """Compute Stage 1 and Stage 2 accuracy separately."""
+    mask = np.arange(len(y_3class)) >= test_start
+
+    # Stage 1: Trend vs Range
+    y_s1_true = np.where(y_3class == 1, 0, 1)  # Range→0, Trend→1
+    s1_valid = mask & ~np.isnan(s1_pred)
+    s1_acc = (y_s1_true[s1_valid] == s1_pred[s1_valid].astype(int)).mean() if s1_valid.sum() > 0 else 0
+
+    # Stage 2: Up vs Down (only on true trend days where Stage 2 ran)
+    y_s2_true = np.where(y_3class == 2, 1, 0)  # Up→1, Down→0
+    s2_valid = mask & ~np.isnan(s2_pred) & (y_s1_true == 1)  # true trend days where s2 predicted
+    s2_acc = (y_s2_true[s2_valid] == s2_pred[s2_valid].astype(int)).mean() if s2_valid.sum() > 0 else 0
+
+    return s1_acc, s1_valid.sum(), s2_acc, s2_valid.sum()
+
+
+# =============================================================================
+# Main
+# =============================================================================
 
 def main():
-    print("Loading data...")
+    print("=" * 78)
+    print("  Two-Stage Regime Predictor with Abstention")
+    print("=" * 78)
 
-    # Load pre-open feature matrix
-    fm = pd.read_csv(CSV_PATH, parse_dates=["date"])
+    df = load_data()
+    X, feat_cols = get_feature_matrix(df)
+    y_3class = df["coincident_label"].map(E3_LABEL_MAP).values.astype(int)
+    nifty_returns = df["nifty_return"].fillna(0).values
 
-    # Load DB data for v2 features and labels
-    nifty, vix, breadth, labels = load_db_data()
+    print(f"\nFeatures: {len(feat_cols)} (v1 set)")
+    print(f"Walk-forward: min_train={MIN_TRAIN}, retrain_every={RETRAIN_EVERY}")
+    print(f"XGBoost: max_depth={XGB_PARAMS['max_depth']}, n_estimators={XGB_PARAMS['n_estimators']}, "
+          f"lr={XGB_PARAMS['learning_rate']}, subsample={XGB_PARAMS['subsample']}")
 
-    print("Computing v2 features...")
-    v2 = compute_v2_features(nifty, vix, breadth)
+    # -------------------------------------------------------------------------
+    # Baseline: 3-class XGBoost
+    # -------------------------------------------------------------------------
+    print("\n" + "-" * 78)
+    print("  Running baseline 3-class XGBoost walk-forward...")
+    print("-" * 78)
 
-    # Merge: feature matrix + v2 features + ground truth labels
-    df = fm.merge(v2, on="date", how="left")
-    # Drop nifty_return from fm if present (will use ground truth version)
-    if "nifty_return" in df.columns:
-        df = df.drop(columns=["nifty_return"])
-    df = df.merge(labels[["date", "coincident_label", "nifty_return"]], on="date", how="left")
+    baseline_preds, baseline_probs = walk_forward_baseline(X, y_3class)
+    baseline_3class = baseline_preds.copy()
 
-    avail_orig = [c for c in ORIG_FEATURES if c in df.columns]
-    avail_v2 = [c for c in V2_FEATURES if c in df.columns]
-    all_features = avail_orig + avail_v2
+    test_mask_bl = ~np.isnan(baseline_preds)
+    bl_yt = y_3class[test_mask_bl]
+    bl_yp = baseline_preds[test_mask_bl].astype(int)
+    bl_acc = (bl_yt == bl_yp).mean()
+    majority = Counter(bl_yt).most_common(1)[0][0]
+    bl_baseline = (bl_yt == majority).mean()
 
-    print(f"  Rows: {len(df)} | Original features: {len(avail_orig)} | v2 features: {len(avail_v2)}")
-    print(f"  Labels: {df['coincident_label'].value_counts().to_dict()}")
+    # Map baseline to string labels for return sep
+    bl_str_preds = np.array([E3_LABEL_INV.get(int(p), "") if not np.isnan(p) else "" for p in baseline_preds])
 
-    inv_map = {0: "Trend-Down", 1: "Range", 2: "Trend-Up"}
-    label_map = {"Trend-Down": 0, "Range": 1, "Trend-Up": 2}
+    bl_metrics = compute_metrics(y_3class, baseline_3class, bl_str_preds, nifty_returns, "Baseline 3-class")
 
-    # === Single-stage E3 baseline (original features only) ===
-    print("\nRunning single-stage E3 baseline (original features)...")
-    preds_base, _ = walk_forward_single_stage(df, avail_orig, label_map, inv_map)
-    acc_base, f1_base, bl_base = print_report(
-        "BASELINE: Single-Stage E3 (27 original features)", preds_base, inv_map
-    )
+    print(f"\n  Baseline 3-class accuracy: {bl_metrics['overall_acc']:.1%}")
+    print(f"  Majority baseline:         {bl_baseline:.1%}")
+    print(f"  Margin:                    {bl_metrics['overall_acc'] - bl_baseline:+.1%}")
+    print(f"  Committed accuracy:         {bl_metrics['committed_acc']:.1%} (100% committed)")
 
-    # === Single-stage with ALL features ===
-    print("\nRunning single-stage with ALL features (orig + v2)...")
-    preds_all, _ = walk_forward_single_stage(df, all_features, label_map, inv_map)
-    acc_all, f1_all, bl_all = print_report(
-        "Single-Stage E3 (27 orig + 12 v2 features)", preds_all, inv_map
-    )
+    print(f"\n  Return separation (baseline):")
+    for cls, stats in bl_metrics["return_sep"].items():
+        print(f"    {cls:<14} mean={stats['mean_return']:+.3f}%  n={stats['count']}")
 
-    # === Two-stage with ALL features ===
-    print("\nRunning two-stage model (orig + v2 features)...")
-    preds_2s, s1_model, s2_model = walk_forward_two_stage(df, all_features)
-    acc_2s, f1_2s, bl_2s = print_report(
-        "TWO-STAGE (27 orig + 12 v2 features)", preds_2s, inv_map
-    )
+    # -------------------------------------------------------------------------
+    # Two-stage model at default threshold (0.55)
+    # -------------------------------------------------------------------------
+    print("\n" + "-" * 78)
+    print("  Running two-stage model walk-forward (Stage 1 threshold=0.55)...")
+    print("-" * 78)
 
-    # === Two-stage Stage 1 accuracy ===
-    if "s1_pred" in preds_2s.columns:
-        s1_actual = preds_2s["actual"].map({0: "Trending", 1: "Range", 2: "Trending"})
-        s1_pred = preds_2s["s1_pred"]
-        s1_acc = accuracy_score(s1_actual, s1_pred)
-        print(f"\n{'='*65}")
-        print(f"  Stage 1 (Trending vs Range) accuracy: {s1_acc:.4f}")
-        s1_majority = s1_actual.mode()[0]
-        s1_baseline = (s1_actual == s1_majority).mean()
-        print(f"  Stage 1 baseline ({s1_majority}): {s1_baseline:.4f}")
-        print(f"  Stage 1 margin: {s1_acc - s1_baseline:+.4f}")
+    final_pred, s1_pred, s1_conf, s2_pred, s2_conf = walk_forward_two_stage(X, y_3class, stage1_threshold=0.55)
+    ts_3class = map_twostage_to_3class(final_pred).astype(float)
 
-    # === Head-to-Head ===
-    print(f"\n{'='*65}")
-    print(f"  HEAD-TO-HEAD COMPARISON")
-    print(f"{'='*65}")
-    print(f"  {'Model':<45s} {'Acc':>7s} {'F1':>7s} {'Margin':>8s}")
-    print(f"  {'-'*45} {'-'*7} {'-'*7} {'-'*8}")
-    print(f"  {'Single-stage (27 orig)':<45s} {acc_base:>7.4f} {f1_base:>7.4f} {acc_base-bl_base:>+8.4f}")
-    print(f"  {'Single-stage (orig + v2)':<45s} {acc_all:>7.4f} {f1_all:>7.4f} {acc_all-bl_all:>+8.4f}")
-    print(f"  {'Two-stage (orig + v2)':<45s} {acc_2s:>7.4f} {f1_2s:>7.4f} {acc_2s-bl_2s:>+8.4f}")
+    ts_metrics = compute_metrics(y_3class, ts_3class, final_pred, nifty_returns, "Two-stage (0.55)")
+
+    # Stage accuracy
+    s1_acc, s1_n, s2_acc, s2_n = evaluate_stage_accuracy(y_3class, s1_pred, s2_pred, MIN_TRAIN)
+
+    # Abstention rate
+    test_indices = np.arange(len(final_pred)) >= MIN_TRAIN
+    test_preds = final_pred[test_indices]
+    uncertain_pct = (test_preds == "Uncertain").mean() * 100
+    trend_unknown_pct = (test_preds == "Trend-Unknown").mean() * 100
+    abstention_rate = uncertain_pct + trend_unknown_pct
+
+    print(f"\n  Overall accuracy (Uncertain/TrendUnknown=wrong): {ts_metrics['overall_acc']:.1%}")
+    print(f"  Committed accuracy:                               {ts_metrics['committed_acc']:.1%}")
+    print(f"  Committed %:                                      {ts_metrics['committed_pct']:.1f}%")
+    print(f"\n  Stage 1 accuracy (Trend vs Range):  {s1_acc:.1%}  (n={s1_n})")
+    print(f"  Stage 2 accuracy (Up vs Down):      {s2_acc:.1%}  (n={s2_n})")
+    print(f"\n  Abstention rate:     {abstention_rate:.1f}%")
+    print(f"    Uncertain:         {uncertain_pct:.1f}%")
+    print(f"    Trend-Unknown:     {trend_unknown_pct:.1f}%")
+
+    print(f"\n  Return separation (two-stage):")
+    for cls, stats in ts_metrics["return_sep"].items():
+        print(f"    {cls:<14} mean={stats['mean_return']:+.3f}%  n={stats['count']}")
+
+    # -------------------------------------------------------------------------
+    # Threshold sweep
+    # -------------------------------------------------------------------------
+    print("\n" + "-" * 78)
+    print("  Stage 1 Confidence Threshold Sweep")
+    print("-" * 78)
+    print(f"\n  {'Threshold':>10} {'Committed%':>12} {'CommittedAcc':>14} {'OverallAcc':>12} {'Abstain%':>10}")
+    print("  " + "-" * 60)
+
+    for thresh in STAGE1_THRESHOLDS:
+        fp, sp1, sc1, sp2, sc2 = walk_forward_two_stage(X, y_3class, stage1_threshold=thresh)
+        tc = map_twostage_to_3class(fp).astype(float)
+        m = compute_metrics(y_3class, tc, fp, nifty_returns, f"Two-stage ({thresh})")
+
+        tp = fp[test_indices]
+        abst = ((tp == "Uncertain").sum() + (tp == "Trend-Unknown").sum()) / len(tp) * 100
+
+        print(f"  {thresh:>10.2f} {m['committed_pct']:>11.1f}% {m['committed_acc']:>13.1%} "
+              f"{m['overall_acc']:>11.1%} {abst:>9.1f}%")
+
+    # -------------------------------------------------------------------------
+    # Head-to-head summary
+    # -------------------------------------------------------------------------
+    print("\n" + "=" * 78)
+    print("  HEAD-TO-HEAD SUMMARY")
+    print("=" * 78)
+    print(f"\n  {'Metric':<35} {'Baseline':>12} {'Two-Stage':>12}")
+    print("  " + "-" * 60)
+    print(f"  {'Overall accuracy':<35} {bl_metrics['overall_acc']:>11.1%} {ts_metrics['overall_acc']:>11.1%}")
+    print(f"  {'Committed accuracy':<35} {bl_metrics['committed_acc']:>11.1%} {ts_metrics['committed_acc']:>11.1%}")
+    print(f"  {'Committed %':<35} {bl_metrics['committed_pct']:>10.1f}% {ts_metrics['committed_pct']:>10.1f}%")
+    print(f"  {'Stage 1 acc (Trend vs Range)':<35} {'—':>12} {s1_acc:>11.1%}")
+    print(f"  {'Stage 2 acc (Up vs Down)':<35} {'—':>12} {s2_acc:>11.1%}")
+    print(f"  {'Abstention rate':<35} {'0.0%':>12} {abstention_rate:>10.1f}%")
+
+    delta_committed = ts_metrics["committed_acc"] - bl_metrics["committed_acc"]
+    print(f"\n  Committed accuracy delta: {delta_committed:+.1%}")
+    if delta_committed > 0:
+        print(f"  → Two-stage gains {delta_committed:.1%} committed accuracy by abstaining on {abstention_rate:.1f}% of days")
+    else:
+        print(f"  → Baseline wins on committed accuracy")
+
     print()
-
-    # Feature importance from final two-stage models
-    if s1_model is not None and hasattr(s1_model, 'feature_importances_'):
-        print(f"  Top 10 features — Stage 1 (Trending vs Range):")
-        imp = sorted(zip(all_features, s1_model.feature_importances_), key=lambda x: -x[1])
-        for feat, score in imp[:10]:
-            print(f"    {feat:40s} {score:.4f}")
-
-    if s2_model is not None and hasattr(s2_model, 'feature_importances_'):
-        print(f"\n  Top 10 features — Stage 2 (Up vs Down):")
-        imp = sorted(zip(all_features, s2_model.feature_importances_), key=lambda x: -x[1])
-        for feat, score in imp[:10]:
-            print(f"    {feat:40s} {score:.4f}")
 
 
 if __name__ == "__main__":
