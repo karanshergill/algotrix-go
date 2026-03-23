@@ -28,6 +28,7 @@ import (
 	"github.com/karanshergill/algotrix-go/internal/auth"
 	"github.com/karanshergill/algotrix-go/internal/config"
 	"github.com/karanshergill/algotrix-go/models"
+	"github.com/karanshergill/algotrix-go/screeners"
 	"github.com/karanshergill/algotrix-go/symbols"
 	"github.com/karanshergill/algotrix-go/watchlist"
 )
@@ -255,7 +256,27 @@ func runFeed() {
 	} else {
 		log.Printf("[FeatureEngine] LIVE — %d stocks, features at http://127.0.0.1:3003/features", len(feEngine.Stocks()))
 	}
-	_ = feEngine
+	// --- Screener Engine: wire after feature engine ---
+	algotrixDSN := "postgres://me:algotrix@localhost:5432/algotrix"
+	scrEngine, err := screeners.Setup(feCtx, algotrixDSN)
+	if err != nil {
+		log.Printf("[Screener] setup failed (non-fatal): %v", err)
+	} else {
+		log.Println("[Screener] LIVE — 5 screeners active")
+
+		// Wire onTick: feature engine calls screeners after each tick
+		feEngine.SetOnTick(func(isin string) {
+			snap := feEngine.Snapshot()
+			if snap == nil {
+				return
+			}
+			stockSnap, ok := snap.Stocks[isin]
+			if !ok {
+				return
+			}
+			scrEngine.ProcessTick(isin, &stockSnap, &snap.Market)
+		})
+	}
 
 	recorder := feed.NewRecorder(configPath, symbolList)
 
