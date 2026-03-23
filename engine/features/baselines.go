@@ -66,7 +66,7 @@ func PreloadBaselines(ctx context.Context, pool *pgxpool.Pool, stocks map[string
 // ordered most recent first.
 func queryTradingDates(ctx context.Context, pool *pgxpool.Pool, n int) ([]time.Time, error) {
 	rows, err := pool.Query(ctx,
-		`SELECT DISTINCT trade_date FROM nse_cm_bhavcopy ORDER BY trade_date DESC LIMIT $1`, n)
+		`SELECT DISTINCT date FROM nse_cm_bhavcopy ORDER BY date DESC LIMIT $1`, n)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func queryTradingDates(ctx context.Context, pool *pgxpool.Pool, n int) ([]time.T
 // loadPrevClose loads previous close price for each stock from nse_cm_bhavcopy.
 func loadPrevClose(ctx context.Context, pool *pgxpool.Pool, stocks map[string]*StockState, lastDate time.Time) error {
 	rows, err := pool.Query(ctx,
-		`SELECT isin, close FROM nse_cm_bhavcopy WHERE trade_date = $1`, lastDate)
+		`SELECT isin, close FROM nse_cm_bhavcopy WHERE date = $1`, lastDate)
 	if err != nil {
 		return err
 	}
@@ -116,10 +116,10 @@ func loadATR(ctx context.Context, pool *pgxpool.Pool, stocks map[string]*StockSt
 	oldestDate := tradingDates[fourteenthIdx]
 
 	rows, err := pool.Query(ctx,
-		`SELECT isin, trade_date, open, high, low, close, prev_close
+		`SELECT isin, date, open, high, low, close, prev_close
 		 FROM nse_cm_bhavcopy
-		 WHERE trade_date >= $1
-		 ORDER BY isin, trade_date`, oldestDate)
+		 WHERE date >= $1
+		 ORDER BY isin, date`, oldestDate)
 	if err != nil {
 		return err
 	}
@@ -132,10 +132,11 @@ func loadATR(ctx context.Context, pool *pgxpool.Pool, stocks map[string]*StockSt
 	isinRows := make(map[string][]ohlcRow)
 
 	for rows.Next() {
-		var isin, tradeDate string
+		var isin string
+		var tradeDate time.Time
 		var open, high, low, close, prevClose float64
 		if err := rows.Scan(&isin, &tradeDate, &open, &high, &low, &close, &prevClose); err != nil {
-			return err
+			return fmt.Errorf("loadATR: %w", err)
 		}
 		if _, ok := stocks[isin]; ok {
 			isinRows[isin] = append(isinRows[isin], ohlcRow{high: high, low: low, prevClose: prevClose})
@@ -177,14 +178,14 @@ func loadVolumeSlotBaselines(ctx context.Context, pool *pgxpool.Pool, stocks map
 		`WITH tick_slots AS (
 			SELECT
 				isin,
-				ts::date AS trade_day,
-				FLOOR(EXTRACT(EPOCH FROM (ts::time - '09:15:00'::time)) / 300)::int AS slot,
+				timestamp::date AS trade_day,
+				FLOOR(EXTRACT(EPOCH FROM (timestamp::time - '09:15:00'::time)) / 300)::int AS slot,
 				MAX(volume) - MIN(volume) AS slot_volume
 			FROM nse_cm_ticks
 			WHERE ts >= $1
-			  AND ts::time >= '09:15:00'
-			  AND ts::time < '15:30:00'
-			GROUP BY isin, ts::date, FLOOR(EXTRACT(EPOCH FROM (ts::time - '09:15:00'::time)) / 300)::int
+			  AND timestamp::time >= '09:15:00'
+			  AND timestamp::time < '15:30:00'
+			GROUP BY isin, timestamp::date, FLOOR(EXTRACT(EPOCH FROM (timestamp::time - '09:15:00'::time)) / 300)::int
 		)
 		SELECT isin, slot, AVG(slot_volume) AS mean_vol, COALESCE(STDDEV(slot_volume), 0) AS std_vol, COUNT(*) AS samples
 		FROM tick_slots
@@ -224,9 +225,9 @@ func loadVolumeSlotBaselines(ctx context.Context, pool *pgxpool.Pool, stocks map
 // loadAvgDailyVolume computes average daily volume over last 10 trading days.
 func loadAvgDailyVolume(ctx context.Context, pool *pgxpool.Pool, stocks map[string]*StockState, sinceDate time.Time) error {
 	rows, err := pool.Query(ctx,
-		`SELECT isin, AVG(tottrdqty)::bigint AS avg_vol
+		`SELECT isin, AVG(volume)::bigint AS avg_vol
 		 FROM nse_cm_bhavcopy
-		 WHERE trade_date >= $1
+		 WHERE date >= $1
 		 GROUP BY isin`, sinceDate)
 	if err != nil {
 		return err

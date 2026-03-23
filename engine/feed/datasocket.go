@@ -3,11 +3,15 @@ package feed
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	fyersgosdk "github.com/FyersDev/fyers-go-sdk/websocket"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// TickCallback is called for every valid tick with ISIN-resolved data.
+type TickCallback func(symbol, isin string, ltp float64, volume int64, ts time.Time)
 
 type DataSocketFeed struct {
 	config       *Config
@@ -16,20 +20,27 @@ type DataSocketFeed struct {
 	socket       *fyersgosdk.FyersDataSocket
 	pool         *pgxpool.Pool
 	writer       *PGWriter
+	hub          *Hub
 	symbolToISIN map[string]string
+	onTickCb     TickCallback // optional: called for every valid tick
 
-	firstData map[string]bool
-	mu        sync.Mutex
-	stopOnce  sync.Once
-	done      chan struct{}
+	firstData    map[string]bool
+	mu           sync.Mutex
+	stopOnce     sync.Once
+	done         chan struct{}
+	reconnecting atomic.Bool
 }
 
-func NewDataSocketFeed(config *Config, token string, symbols []string, pool *pgxpool.Pool, symbolToISIN map[string]string) *DataSocketFeed {
+// SetOnTick registers a callback invoked for every valid tick.
+func (f *DataSocketFeed) SetOnTick(cb TickCallback) { f.onTickCb = cb }
+
+func NewDataSocketFeed(config *Config, token string, symbols []string, pool *pgxpool.Pool, symbolToISIN map[string]string, hub *Hub) *DataSocketFeed {
 	return &DataSocketFeed{
 		config:       config,
 		token:        token,
 		symbols:      symbols,
 		pool:         pool,
+		hub:          hub,
 		symbolToISIN: symbolToISIN,
 		firstData:    make(map[string]bool),
 		done:         make(chan struct{}),
@@ -41,7 +52,27 @@ func (f *DataSocketFeed) Start() error {
 
 	f.writer = NewPGWriter(f.pool, cfg.Storage.DepthTable, cfg.Storage.TicksTable, cfg.DataSocket.FlushIntervalMs, "DataSocket")
 
-	f.socket = fyersgosdk.NewFyersDataSocket(
+	// Connect — non-fatal if it fails (market closed, token expired, etc.).
+	if err := f.connect(); err != nil {
+		logTS("[DataSocket] initial connect failed: %v, will retry in background", err)
+		go f.tryReconnect()
+	}
+
+	return nil
+}
+
+func (f *DataSocketFeed) connect() error {
+	cfg := f.config.Feed
+
+	f.mu.Lock()
+	// Close any previous socket before creating a new one.
+	if f.socket != nil {
+		f.socket.CloseConnection()
+		f.socket = nil
+	}
+	f.mu.Unlock()
+
+	socket := fyersgosdk.NewFyersDataSocket(
 		f.token,
 		cfg.DataSocket.LogPath,
 		false, // liteMode
@@ -53,6 +84,15 @@ func (f *DataSocketFeed) Start() error {
 		},
 		func(data fyersgosdk.DataClose) {
 			logTS("[DataSocket] connection closed: %v", data)
+			// Trigger reconnect if not already reconnecting and not shutting down.
+			select {
+			case <-f.done:
+				return
+			default:
+			}
+			if f.reconnecting.CompareAndSwap(false, true) {
+				go f.tryReconnect()
+			}
 		},
 		func(data fyersgosdk.DataError) {
 			logTS("[DataSocket] error: %v", data)
@@ -60,18 +100,65 @@ func (f *DataSocketFeed) Start() error {
 		f.onMessage,
 	)
 
-	if f.socket == nil {
+	if socket == nil {
 		return fmt.Errorf("failed to create DataSocket (field mappings load failed)")
 	}
 
-	if err := f.socket.Connect(); err != nil {
+	if err := socket.Connect(); err != nil {
 		return fmt.Errorf("DataSocket connect: %w", err)
 	}
 
-	f.socket.Subscribe(f.symbols, "SymbolUpdate")
+	f.mu.Lock()
+	f.socket = socket
+	f.mu.Unlock()
+
+	socket.Subscribe(f.symbols, "SymbolUpdate")
 	logTS("[DataSocket] subscribed %d symbols", len(f.symbols))
 
 	return nil
+}
+
+func (f *DataSocketFeed) tryReconnect() {
+	defer f.reconnecting.Store(false)
+
+	cfg := f.config.Feed.DataSocket
+	if !cfg.Reconnect {
+		logTS("[DataSocket] reconnect disabled, feed stopped")
+		return
+	}
+
+	backoff := initialBackoff
+	for attempt := 1; attempt <= cfg.MaxReconnectAttempts; attempt++ {
+		select {
+		case <-f.done:
+			return
+		default:
+		}
+
+		logTS("[DataSocket] reconnect attempt %d/%d (backoff %v)", attempt, cfg.MaxReconnectAttempts, backoff)
+
+		time.Sleep(backoff)
+
+		select {
+		case <-f.done:
+			return
+		default:
+		}
+
+		if err := f.connect(); err != nil {
+			logTS("[DataSocket] reconnect attempt %d failed: %v", attempt, err)
+			backoff *= 2
+			if backoff > maxBackoffDelay {
+				backoff = maxBackoffDelay
+			}
+			continue
+		}
+
+		logTS("[DataSocket] reconnected successfully on attempt %d", attempt)
+		return
+	}
+
+	logTS("[DataSocket] max reconnect attempts (%d) reached, feed stopped", cfg.MaxReconnectAttempts)
 }
 
 func (f *DataSocketFeed) Stop() {
@@ -154,6 +241,15 @@ func (f *DataSocketFeed) onMessage(resp fyersgosdk.DataResponse) {
 	}
 
 	f.writer.WriteTick(row)
+
+	if f.hub != nil {
+		f.hub.BroadcastTick(symbol, isin, row)
+	}
+
+	// Feature engine callback
+	if f.onTickCb != nil && ltpOk && volOk {
+		f.onTickCb(symbol, isin, ltp, vol, ts)
+	}
 }
 
 // Fix 6: No reflection. Exhaustive type matching including SDK's FloatSDK.

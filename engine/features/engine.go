@@ -141,6 +141,9 @@ func (e *FeatureEngine) Market() *MarketState { return e.market }
 // Stock returns a stock state by ISIN (nil if not registered).
 func (e *FeatureEngine) Stock(isin string) *StockState { return e.stocks[isin] }
 
+// Stocks returns the stocks map (read-only use).
+func (e *FeatureEngine) Stocks() map[string]*StockState { return e.stocks }
+
 // SetHub sets the hub broadcaster (nil-safe pattern — hub integration comes later).
 func (e *FeatureEngine) SetHub(hub HubBroadcaster) { e.hub = hub }
 

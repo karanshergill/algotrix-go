@@ -2,10 +2,13 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"os/exec"
 	"sort"
 	"strings"
 
@@ -20,6 +23,7 @@ import (
 	"github.com/karanshergill/algotrix-go/data/nse"
 	"github.com/karanshergill/algotrix-go/db/conns"
 	"github.com/karanshergill/algotrix-go/db/ops"
+	"github.com/karanshergill/algotrix-go/features"
 	"github.com/karanshergill/algotrix-go/feed"
 	"github.com/karanshergill/algotrix-go/internal/auth"
 	"github.com/karanshergill/algotrix-go/internal/config"
@@ -57,6 +61,9 @@ func main() {
 			return
 		case "backtest":
 			runBacktest()
+			return
+		case "market-data":
+			runMarketData()
 			return
 		}
 	}
@@ -232,7 +239,33 @@ func runFeed() {
 		log.Fatal("Fyers token invalid: ", err)
 	}
 
+	// --- Feature Engine: start BEFORE recorder so we don't miss ticks ---
+	feCtx, feCancel := context.WithCancel(context.Background())
+	defer feCancel()
+
+	// Load feed config to get DB DSN
+	feedCfg, err := feed.LoadConfig(configPath)
+	if err != nil {
+		log.Fatal("load feed config for feature engine: ", err)
+	}
+
+	feEngine, feAdapter, err := features.StartFeatureEngine(feCtx, feedCfg.Feed.Storage.PostgresDSN, nil)
+	if err != nil {
+		log.Printf("[FeatureEngine] startup failed (non-fatal): %v", err)
+	} else {
+		log.Printf("[FeatureEngine] LIVE — %d stocks, features at http://127.0.0.1:3003/features", len(feEngine.Stocks()))
+	}
+	_ = feEngine
+
 	recorder := feed.NewRecorder(configPath, symbolList)
+
+	// Wire tick callback to feature engine
+	if feAdapter != nil {
+		recorder.SetOnTick(func(symbol, isin string, ltp float64, volume int64, ts time.Time) {
+			feAdapter.AdaptTick(symbol, isin, ltp, volume, ts)
+		})
+	}
+
 	if err := recorder.Start(a.AccessToken()); err != nil {
 		log.Fatal("Feed error: ", err)
 	}
@@ -373,7 +406,7 @@ func runWatchlist() {
 	}
 
 	// Parse common flags.
-	var symbolFlag, csvPath, weightsJSON string
+	var symbolFlag, csvPath, weightsJSON, filtersJSON string
 	lookback := 30
 	coverage := 1.0
 	madtvFloor := 1e9 // ₹100 Crore
@@ -404,6 +437,8 @@ func runWatchlist() {
 			fnoOnly = true
 		case "--weights":
 			if i+1 < len(os.Args) { weightsJSON = os.Args[i+1] }
+		case "--filters":
+			if i+1 < len(os.Args) { filtersJSON = os.Args[i+1] }
 		}
 	}
 
@@ -450,6 +485,25 @@ func runWatchlist() {
 				cfg.WeightParkinson = norm("parkinson")
 				cfg.WeightMomentum = norm("momentum")
 			}
+		}
+	}
+
+	// Parse per-metric filter thresholds JSON.
+	if filtersJSON != "" {
+		var raw map[string]float64
+		if err := json.Unmarshal([]byte(filtersJSON), &raw); err == nil {
+			if v, ok := raw["minADRPct"]; ok { cfg.MinADRPct = v }
+			if v, ok := raw["minRangeEff"]; ok { cfg.MinRangeEff = v }
+			if v, ok := raw["minMomentum"]; ok { cfg.MinMomentum = v }
+			if v, ok := raw["minParkinson"]; ok { cfg.MinParkinson = v }
+			if v, ok := raw["maxAmihud"]; ok { cfg.MaxAmihud = v }
+			if v, ok := raw["minTradeSize"]; ok { cfg.MinTradeSize = v }
+			if v, ok := raw["minATRPct"]; ok { cfg.MinATRPct = v }
+			if v, ok := raw["minBeta"]; ok { cfg.MinBeta = v }
+			if v, ok := raw["minRS"]; ok { cfg.MinRS = v }
+			if v, ok := raw["minGap"]; ok { cfg.MinGap = v }
+			if v, ok := raw["minVolRatio"]; ok { cfg.MinVolRatio = v }
+			if v, ok := raw["minEMASlope"]; ok { cfg.MinEMASlope = v }
 		}
 	}
 
@@ -832,7 +886,7 @@ func runBacktest() {
 	cfg := watchlist.DefaultBacktestConfig()
 	jsonOutput := false
 	var minMcapCr, maxMcapCr float64
-	var weightsJSON string
+	var weightsJSON, filtersJSON string
 
 	for i, arg := range os.Args {
 		switch arg {
@@ -867,6 +921,10 @@ func runBacktest() {
 		case "--weights":
 			if i+1 < len(os.Args) {
 				weightsJSON = os.Args[i+1]
+			}
+		case "--filters":
+			if i+1 < len(os.Args) {
+				filtersJSON = os.Args[i+1]
 			}
 		case "--json":
 			jsonOutput = true
@@ -907,6 +965,25 @@ func runBacktest() {
 				cfg.BuildConfig.WeightVolRatio = norm("volRatio")
 				cfg.BuildConfig.WeightEMASlope = norm("emaSlope")
 			}
+		}
+	}
+
+	// Parse per-metric filter thresholds JSON.
+	if filtersJSON != "" {
+		var raw map[string]float64
+		if err := json.Unmarshal([]byte(filtersJSON), &raw); err == nil {
+			if v, ok := raw["minADRPct"]; ok { cfg.BuildConfig.MinADRPct = v }
+			if v, ok := raw["minRangeEff"]; ok { cfg.BuildConfig.MinRangeEff = v }
+			if v, ok := raw["minMomentum"]; ok { cfg.BuildConfig.MinMomentum = v }
+			if v, ok := raw["minParkinson"]; ok { cfg.BuildConfig.MinParkinson = v }
+			if v, ok := raw["maxAmihud"]; ok { cfg.BuildConfig.MaxAmihud = v }
+			if v, ok := raw["minTradeSize"]; ok { cfg.BuildConfig.MinTradeSize = v }
+			if v, ok := raw["minATRPct"]; ok { cfg.BuildConfig.MinATRPct = v }
+			if v, ok := raw["minBeta"]; ok { cfg.BuildConfig.MinBeta = v }
+			if v, ok := raw["minRS"]; ok { cfg.BuildConfig.MinRS = v }
+			if v, ok := raw["minGap"]; ok { cfg.BuildConfig.MinGap = v }
+			if v, ok := raw["minVolRatio"]; ok { cfg.BuildConfig.MinVolRatio = v }
+			if v, ok := raw["minEMASlope"]; ok { cfg.BuildConfig.MinEMASlope = v }
 		}
 	}
 
@@ -1328,4 +1405,225 @@ func runBenchmark() {
 		topN, overlap, float64(overlap)/float64(topN)*100)
 	fmt.Printf("  V4-only: %d new stocks | V2-only: %d dropped stocks\n",
 		len(v4Top)-overlap, len(v2Top)-overlap)
+}
+
+// runMarketData runs the unified NSE market data pipeline.
+// Usage:
+//
+//	algotrix market-data --date 2026-03-19
+//	algotrix market-data --from 2026-02-01 --to 2026-03-19
+//	algotrix market-data --date 2026-03-19 --feed cm_bhavcopy,indices_daily
+func runMarketData() {
+	var dateFlag, fromFlag, toFlag, feedFlag string
+	for i, arg := range os.Args {
+		switch arg {
+		case "--date":
+			if i+1 < len(os.Args) {
+				dateFlag = os.Args[i+1]
+			}
+		case "--from":
+			if i+1 < len(os.Args) {
+				fromFlag = os.Args[i+1]
+			}
+		case "--to":
+			if i+1 < len(os.Args) {
+				toFlag = os.Args[i+1]
+			}
+		case "--feed":
+			if i+1 < len(os.Args) {
+				feedFlag = os.Args[i+1]
+			}
+		}
+	}
+
+	// DB connection.
+	dbCfg, err := conns.LoadDBConfig("db/conns/db.yaml")
+	if err != nil {
+		log.Fatal("Failed to load db config: ", err)
+	}
+	_ = stdlib.GetDefaultDriver()
+	db, err := sql.Open("pgx", dbCfg.Postgres.DSN())
+	if err != nil {
+		log.Fatal("DB connection failed: ", err)
+	}
+	defer db.Close()
+
+	// Build date list.
+	var dates []time.Time
+	if dateFlag != "" {
+		d, err := time.Parse("2006-01-02", dateFlag)
+		if err != nil {
+			log.Fatalf("Invalid --date: %v", err)
+		}
+		dates = append(dates, d)
+	} else if fromFlag != "" && toFlag != "" {
+		from, err := time.Parse("2006-01-02", fromFlag)
+		if err != nil {
+			log.Fatalf("Invalid --from: %v", err)
+		}
+		to, err := time.Parse("2006-01-02", toFlag)
+		if err != nil {
+			log.Fatalf("Invalid --to: %v", err)
+		}
+		for d := from; !d.After(to); d = d.AddDate(0, 0, 1) {
+			if d.Weekday() == time.Saturday || d.Weekday() == time.Sunday {
+				continue
+			}
+			dates = append(dates, d)
+		}
+	} else {
+		fmt.Println("Usage: market-data --date 2026-03-19  OR  market-data --from 2026-02-01 --to 2026-03-19")
+		fmt.Println("       --feed cm_bhavcopy,indices_daily,fo_bhavcopy  (optional, default=all)")
+		return
+	}
+
+	// All registered feed handlers.
+	// Note: VIX feed removed — India VIX OHLC is already captured in nse_indices_daily
+	// as index "India VIX". Query: SELECT * FROM nse_indices_daily WHERE index = 'India VIX'.
+	allHandlers := []nse.FeedHandler{
+		&nse.CMBhavcopyHandler{},
+		&nse.IndicesHandler{},
+		&nse.FOBhavcopyHandler{},
+		&nse.FIIDIIParticipantHandler{},
+		&nse.NSEIXSettlementHandler{},
+		&nse.NSEIXCombinedOIHandler{},
+	}
+
+	// Filter by --feed if specified.
+	handlers := allHandlers
+	if feedFlag != "" {
+		feedSet := make(map[string]bool)
+		for _, f := range strings.Split(feedFlag, ",") {
+			feedSet[strings.TrimSpace(f)] = true
+		}
+		handlers = nil
+		for _, h := range allHandlers {
+			if feedSet[h.Config().Name] {
+				handlers = append(handlers, h)
+			}
+		}
+		if len(handlers) == 0 {
+			log.Fatalf("No matching feeds for --feed %q", feedFlag)
+		}
+	}
+
+	fmt.Printf("NSE Market Data Pipeline — %d feed(s) x %d date(s)\n", len(handlers), len(dates))
+	for _, h := range handlers {
+		fmt.Printf("  - %s → %s\n", h.Config().Name, h.Config().Sink.Table)
+	}
+	fmt.Println()
+
+	pipelineStart := time.Now()
+	var allResults []nse.FeedResult
+	allOK := true
+
+	for i, d := range dates {
+		fmt.Printf("[%d/%d] %s\n", i+1, len(dates), d.Format("2006-01-02"))
+		results, ok := nse.RunPipeline(db, handlers, d)
+		allResults = append(allResults, results...)
+		if !ok {
+			allOK = false
+		}
+
+		// Pause between dates for backfill runs.
+		if i < len(dates)-1 {
+			time.Sleep(2 * time.Second)
+		}
+	}
+
+	totalDuration := time.Since(pipelineStart)
+
+	// Print summary.
+	fmt.Println()
+	fmt.Println("=== Pipeline Summary ===")
+	for _, r := range allResults {
+		status := "OK"
+		if r.Status == "failed" {
+			status = fmt.Sprintf("FAILED (%s: %s)", r.ErrorClass, r.ErrorMessage)
+		} else if r.Status == "skipped" {
+			status = "SKIPPED"
+		}
+		fmt.Printf("  %s %s: %s — %d rows, %dms\n", r.Date.Format("2006-01-02"), r.FeedName, status, r.RowsInserted, r.DurationMs)
+	}
+	fmt.Printf("\nTotal: %.1fs | All OK: %v\n", totalDuration.Seconds(), allOK)
+
+	// Post-pipeline: run regime scoring for single-date runs.
+	if allOK && len(dates) == 1 {
+		runRegimeScoring(dates[0].Format("2006-01-02"))
+	}
+
+	// Discord alert.
+	sendMarketDataAlert(allResults, dates, totalDuration, allOK)
+}
+
+// runRegimeScoring runs the Python regime scoring CLI after market data pipeline completes.
+func runRegimeScoring(dateStr string) {
+	classifierDir := os.Getenv("REGIME_CLASSIFIER_DIR")
+	if classifierDir == "" {
+		// Default relative path from engine directory.
+		classifierDir = "../regime-classifier"
+	}
+
+	fmt.Printf("\n--- Regime Scoring for %s ---\n", dateStr)
+	cmd := exec.Command("python3", "cli.py", "regime", "daily", "--date", dateStr)
+	cmd.Dir = classifierDir
+	cmd.Env = append(os.Environ(), "PGPASSWORD=algotrix")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("WARNING: Regime scoring failed: %v\n", err)
+	} else {
+		fmt.Println("Regime scoring complete.")
+	}
+}
+
+// sendMarketDataAlert posts a pipeline summary to Discord #system channel.
+func sendMarketDataAlert(results []nse.FeedResult, dates []time.Time, totalDuration time.Duration, allOK bool) {
+	webhookURL := os.Getenv("DISCORD_WEBHOOK_SYSTEM")
+	if webhookURL == "" {
+		log.Println("DISCORD_WEBHOOK_SYSTEM not set — skipping Discord alert")
+		return
+	}
+
+	var sb strings.Builder
+	if allOK {
+		sb.WriteString("**NSE Market Data Pipeline**\n")
+	} else {
+		sb.WriteString("**NSE Market Data Pipeline — INCOMPLETE**\n")
+	}
+
+	if len(dates) == 1 {
+		sb.WriteString(fmt.Sprintf("Date: %s\n\n", dates[0].Format("2006-01-02")))
+	} else {
+		sb.WriteString(fmt.Sprintf("Dates: %s to %s (%d days)\n\n",
+			dates[0].Format("2006-01-02"), dates[len(dates)-1].Format("2006-01-02"), len(dates)))
+	}
+
+	for _, r := range results {
+		switch r.Status {
+		case "success":
+			sb.WriteString(fmt.Sprintf("  %s: %d rows (%dms)\n", r.FeedName, r.RowsInserted, r.DurationMs))
+		case "failed":
+			sb.WriteString(fmt.Sprintf("  %s: FAILED — %s (%s, %d retries)\n", r.FeedName, r.ErrorMessage, r.ErrorClass, r.Retries))
+		case "skipped":
+			sb.WriteString(fmt.Sprintf("  %s: skipped\n", r.FeedName))
+		}
+	}
+
+	sb.WriteString(fmt.Sprintf("\nTotal: %.1fs", totalDuration.Seconds()))
+	if !allOK {
+		sb.WriteString("\nPipeline incomplete — downstream compute blocked")
+	}
+
+	payload, _ := json.Marshal(map[string]string{"content": sb.String()})
+	resp, err := http.Post(webhookURL, "application/json", bytes.NewReader(payload))
+	if err != nil {
+		log.Printf("Discord alert failed: %v", err)
+		return
+	}
+	resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		log.Printf("Discord alert returned status %d", resp.StatusCode)
+	}
 }

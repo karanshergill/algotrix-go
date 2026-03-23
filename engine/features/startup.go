@@ -14,7 +14,21 @@ import (
 // StartFeatureEngine is the high-level startup function that wires everything together.
 // It loads config, connects to DB, registers stocks, preloads baselines, and starts
 // the engine event loop + REST server.
+// Accepts dbDSN string — creates its own pool.
 func StartFeatureEngine(ctx context.Context, dbDSN string, hub *feed.Hub) (*FeatureEngine, *FeedAdapter, error) {
+	pool, err := pgxpool.New(ctx, dbDSN)
+	if err != nil {
+		return nil, nil, fmt.Errorf("connect to DB: %w", err)
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, nil, fmt.Errorf("DB ping: %w", err)
+	}
+	return StartFeatureEngineWithPool(ctx, pool, hub)
+}
+
+// StartFeatureEngineWithPool starts the feature engine using an existing DB pool.
+func StartFeatureEngineWithPool(ctx context.Context, pool *pgxpool.Pool, hub *feed.Hub) (*FeatureEngine, *FeedAdapter, error) {
 	// 1. Load config (use defaults if file missing)
 	config, err := loadConfigOrDefault("features.yaml")
 	if err != nil {
@@ -25,16 +39,7 @@ func StartFeatureEngine(ctx context.Context, dbDSN string, hub *feed.Hub) (*Feat
 	engine := NewFeatureEngine(config)
 	log.Printf("[startup] feature engine created (tick_buf=%d, depth_buf=%d)", config.TickBuffer, config.DepthBuffer)
 
-	// 3. Connect to DB
-	pool, err := pgxpool.New(ctx, dbDSN)
-	if err != nil {
-		return nil, nil, fmt.Errorf("connect to DB: %w", err)
-	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return nil, nil, fmt.Errorf("DB ping: %w", err)
-	}
-	log.Println("[startup] connected to database")
+	log.Println("[startup] using provided database pool")
 
 	// 4-5. Register stocks from DB
 	registered, err := RegisterStocksFromDB(ctx, pool, engine)
@@ -90,8 +95,12 @@ func StartFeatureEngine(ctx context.Context, dbDSN string, hub *feed.Hub) (*Feat
 // in nse_cm_bhavcopy and registers them on the engine.
 func RegisterStocksFromDB(ctx context.Context, pool *pgxpool.Pool, engine *FeatureEngine) (int, error) {
 	rows, err := pool.Query(ctx,
-		`SELECT DISTINCT isin, symbol FROM nse_cm_bhavcopy
-		 WHERE trade_date = (SELECT MAX(trade_date) FROM nse_cm_bhavcopy)`)
+		`SELECT s.isin, s.symbol FROM symbols s
+		 WHERE s.status = 'active'
+		 AND s.isin IN (
+		   SELECT DISTINCT isin FROM nse_cm_bhavcopy
+		   WHERE date = (SELECT MAX(date) FROM nse_cm_bhavcopy)
+		 )`)
 	if err != nil {
 		return 0, fmt.Errorf("query stocks: %w", err)
 	}

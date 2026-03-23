@@ -15,8 +15,10 @@ type Recorder struct {
 	symbols    []string
 	config     *Config
 	pool       *pgxpool.Pool
+	hub        *Hub
 	tbt        *TBTFeed
 	datasocket *DataSocketFeed
+	onTickCb   TickCallback
 }
 
 func NewRecorder(configPath string, symbols []string) *Recorder {
@@ -75,8 +77,19 @@ func (r *Recorder) Start(token string) error {
 
 	logTS("[Recorder] starting with %d symbols", len(r.symbols))
 
+	// Start internal WebSocket hub for live tick/depth broadcast.
+	if cfg.Feed.Hub.Enabled {
+		r.hub = NewHub(cfg.Feed.Hub.Port)
+		if err := r.hub.Start(); err != nil {
+			return fmt.Errorf("start hub: %w", err)
+		}
+		logTS("[Recorder] Hub started on port %d", cfg.Feed.Hub.Port)
+	} else {
+		logTS("[Recorder] Hub disabled")
+	}
+
 	if cfg.Feed.TBT.Enabled {
-		r.tbt = NewTBTFeed(cfg, token, r.symbols, pool, symbolToISIN)
+		r.tbt = NewTBTFeed(cfg, token, r.symbols, pool, symbolToISIN, r.hub)
 		if err := r.tbt.Start(); err != nil {
 			return fmt.Errorf("start TBT feed: %w", err)
 		}
@@ -86,7 +99,10 @@ func (r *Recorder) Start(token string) error {
 	}
 
 	if cfg.Feed.DataSocket.Enabled {
-		r.datasocket = NewDataSocketFeed(cfg, token, r.symbols, pool, symbolToISIN)
+		r.datasocket = NewDataSocketFeed(cfg, token, r.symbols, pool, symbolToISIN, r.hub)
+		if r.onTickCb != nil {
+			r.datasocket.SetOnTick(r.onTickCb)
+		}
 		if err := r.datasocket.Start(); err != nil {
 			return fmt.Errorf("start DataSocket feed: %w", err)
 		}
@@ -106,12 +122,27 @@ func (r *Recorder) Start(token string) error {
 	return nil
 }
 
+// SetOnTick registers a callback on the DataSocket feed for every valid tick.
+// Must be called before Start().
+func (r *Recorder) SetOnTick(cb TickCallback) {
+	r.onTickCb = cb
+}
+
+// Hub returns the internal hub (nil if hub disabled).
+func (r *Recorder) Hub() *Hub { return r.hub }
+
+// Pool returns the DB connection pool (nil before Start).
+func (r *Recorder) Pool() *pgxpool.Pool { return r.pool }
+
 func (r *Recorder) Stop() {
 	if r.tbt != nil {
 		r.tbt.Stop()
 	}
 	if r.datasocket != nil {
 		r.datasocket.Stop()
+	}
+	if r.hub != nil {
+		r.hub.Stop()
 	}
 	if r.pool != nil {
 		r.pool.Close()
