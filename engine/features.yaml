@@ -1,0 +1,47 @@
+# features.yaml — Feature engine configuration
+
+engine:
+  tick_channel_buffer: 100000
+  depth_channel_buffer: 50000
+  snapshot_clone_strategy: "copy_on_write"
+
+windows:
+  volume_1m: 60s
+  volume_5m: 300s
+  buy_vol_5m: 300s
+  sell_vol_5m: 300s
+  updates_1m: 60s
+  high_5m: 300s
+  low_5m: 300s
+
+rolling_buffer_capacity:
+  per_stock_1m: 1000
+  per_stock_5m: 5000
+
+feed_guards:
+  max_price_jump_pct: 20.0
+  max_spread_bps: 500.0
+  min_ltp: 0.01
+  allow_volume_reset: true
+
+baselines:
+  atr_trading_days: 14
+  volume_slot_trading_days: 10
+  avg_volume_trading_days: 10
+  min_slot_samples: 5
+
+session:
+  pre_open_start: "09:00"
+  market_open: "09:15"
+  market_close: "15:30"
+  reject_outside_session: true
+
+book_weights: [5, 3, 2, 1, 0.5]
+
+rest:
+  port: 3003
+  read_timeout: 5s
+
+hub:
+  port: 3002
+  broadcast_features: true
