@@ -1,6 +1,7 @@
 package features
 
 import (
+	"context"
 	"testing"
 )
 
@@ -24,16 +25,17 @@ func TestGetSectorNames(t *testing.T) {
 
 func TestLoadSectorMapping(t *testing.T) {
 	stocks := map[string]*StockState{
-		"INE001": {ISIN: "INE001"},
-		"INE002": {ISIN: "INE002"},
+		"INE001": {ISIN: "INE001", Symbol: "HDFCBANK"},
+		"INE002": {ISIN: "INE002", Symbol: "TCS"},
 	}
 	sectors := make(map[string]*SectorState)
 
-	loadSectorMapping(stocks, sectors)
+	// nil pool → falls through to static mapping
+	loadSectorMapping(context.Background(), nil, stocks, sectors)
 
 	// Should have all sectors from static mapping
-	if len(sectors) != len(sectorMembers) {
-		t.Errorf("expected %d sectors, got %d", len(sectorMembers), len(sectors))
+	if len(sectors) != len(sectorSymbols) {
+		t.Errorf("expected %d sectors, got %d", len(sectorSymbols), len(sectors))
 	}
 
 	// Verify sector state is properly initialized
@@ -41,6 +43,46 @@ func TestLoadSectorMapping(t *testing.T) {
 		if sec.Name != name {
 			t.Errorf("sector %q has Name=%q", name, sec.Name)
 		}
+	}
+
+	// HDFCBANK should be resolved into NIFTY_BANK (and NIFTY_FIN_SVC)
+	s := stocks["INE001"]
+	if s.SectorID == "" {
+		t.Error("HDFCBANK should have a SectorID assigned")
+	}
+}
+
+func TestLoadSectorMappingStatic_ResolvesSymbols(t *testing.T) {
+	stocks := map[string]*StockState{
+		"INE001": {ISIN: "INE001", Symbol: "RELIANCE"},
+		"INE002": {ISIN: "INE002", Symbol: "TCS"},
+		"INE003": {ISIN: "INE003", Symbol: "SBIN"},
+	}
+	sectors := make(map[string]*SectorState)
+
+	loadSectorMappingStatic(stocks, sectors)
+
+	// RELIANCE should be in NIFTY_ENERGY
+	if stocks["INE001"].SectorID != "NIFTY_ENERGY" {
+		t.Errorf("RELIANCE SectorID = %q, want NIFTY_ENERGY", stocks["INE001"].SectorID)
+	}
+
+	// TCS should be in NIFTY_IT
+	if stocks["INE002"].SectorID != "NIFTY_IT" {
+		t.Errorf("TCS SectorID = %q, want NIFTY_IT", stocks["INE002"].SectorID)
+	}
+
+	// NIFTY_ENERGY should have RELIANCE as member
+	energy := sectors["NIFTY_ENERGY"]
+	found := false
+	for _, isin := range energy.MemberISINs {
+		if isin == "INE001" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("NIFTY_ENERGY should contain INE001 (RELIANCE)")
 	}
 }
 

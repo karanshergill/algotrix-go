@@ -57,7 +57,7 @@ func PreloadBaselines(ctx context.Context, pool *pgxpool.Pool, stocks map[string
 	}
 
 	// 5. Sector membership mapping
-	loadSectorMapping(stocks, sectors)
+	loadSectorMapping(ctx, pool, stocks, sectors)
 
 	return nil
 }
@@ -182,7 +182,7 @@ func loadVolumeSlotBaselines(ctx context.Context, pool *pgxpool.Pool, stocks map
 				FLOOR(EXTRACT(EPOCH FROM (timestamp::time - '09:15:00'::time)) / 300)::int AS slot,
 				MAX(volume) - MIN(volume) AS slot_volume
 			FROM nse_cm_ticks
-			WHERE ts >= $1
+			WHERE timestamp >= $1
 			  AND timestamp::time >= '09:15:00'
 			  AND timestamp::time < '15:30:00'
 			GROUP BY isin, timestamp::date, FLOOR(EXTRACT(EPOCH FROM (timestamp::time - '09:15:00'::time)) / 300)::int
@@ -254,28 +254,92 @@ func loadAvgDailyVolume(ctx context.Context, pool *pgxpool.Pool, stocks map[stri
 // Sector Mapping
 // ---------------------------------------------------------------------------
 
-// sectorMembers is a static mapping of Nifty sector indices to member ISINs.
-// TODO: Replace with DB query from nse_indices_daily or a sector constituents table.
-var sectorMembers = map[string][]string{
-	"NIFTY_BANK":     {},
-	"NIFTY_IT":       {},
-	"NIFTY_FMCG":     {},
-	"NIFTY_PHARMA":   {},
-	"NIFTY_AUTO":     {},
-	"NIFTY_METAL":    {},
-	"NIFTY_REALTY":   {},
-	"NIFTY_ENERGY":   {},
-	"NIFTY_INFRA":    {},
-	"NIFTY_PSU_BANK": {},
-	"NIFTY_FIN_SVC":  {},
-	"NIFTY_MEDIA":    {},
+// sectorSymbols maps Nifty sector index names to constituent trading symbols.
+// Used as a static fallback when the index_constituents DB table is empty/missing.
+var sectorSymbols = map[string][]string{
+	"NIFTY_BANK":     {"HDFCBANK", "ICICIBANK", "KOTAKBANK", "SBIN", "AXISBANK", "INDUSINDBK", "BANDHANBNK", "FEDERALBNK", "IDFCFIRSTB", "PNB", "AUBANK", "BANKBARODA"},
+	"NIFTY_IT":       {"TCS", "INFY", "WIPRO", "HCLTECH", "TECHM", "LTIM", "MPHASIS", "COFORGE", "PERSISTENT", "LTTS"},
+	"NIFTY_FMCG":     {"HINDUNILVR", "ITC", "NESTLEIND", "BRITANNIA", "DABUR", "MARICO", "GODREJCP", "COLPAL", "TATACONSUM", "VBL", "UBL", "EMAMILTD", "PGHH", "RADICO", "JYOTHYLAB"},
+	"NIFTY_PHARMA":   {"SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "APOLLOHOSP", "LUPIN", "AUROPHARMA", "TORNTPHARM", "ALKEM", "BIOCON", "GLENMARK", "IPCALAB", "NATCOPHARMA", "LAURUSLABS", "ABBOTINDIA", "SYNGENE", "ZYDUSLIFE", "GRANULES", "AJANTPHARM", "GLAND"},
+	"NIFTY_AUTO":     {"TATAMOTORS", "M&M", "MARUTI", "BAJAJ-AUTO", "EICHERMOT", "HEROMOTOCO", "ASHOKLEY", "BALKRISIND", "BHARATFORG", "BOSCHLTD", "MRF", "MOTHERSON", "TVSMOTOR", "EXIDEIND", "TIINDIA"},
+	"NIFTY_METAL":    {"TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "COALINDIA", "NMDC", "SAIL", "NATIONALUM", "HINDCOPPER", "APLAPOLLO", "JINDALSTEL", "RATNAMANI", "WELCORP", "MOIL", "HINDZINC"},
+	"NIFTY_REALTY":   {"DLF", "GODREJPROP", "OBEROIRLTY", "PRESTIGE", "PHOENIXLTD", "BRIGADE", "SOBHA", "SUNTECK", "LODHA", "MAHLIFE"},
+	"NIFTY_ENERGY":   {"RELIANCE", "NTPC", "POWERGRID", "ONGC", "ADANIGREEN", "TATAPOWER", "BPCL", "IOC", "GAIL", "ADANIENT"},
+	"NIFTY_INFRA":    {"LT", "ADANIPORTS", "ULTRACEMCO", "GRASIM", "NTPC", "POWERGRID", "BHARTIARTL", "DLF", "IRB", "SIEMENS", "ABB", "CUMMINSIND", "THERMAX", "KEC", "KALPATPOWR", "ENGINERSIN", "BEL", "NBCC", "IRCON", "RVNL", "NCC", "HCC", "JKCEMENT", "RAMCOCEM", "DALMIACEM", "AMBUJACEM", "ACC", "CONCOR", "ADANIGREEN", "TATAPOWER"},
+	"NIFTY_PSU_BANK": {"SBIN", "PNB", "BANKBARODA", "CANBK", "UNIONBANK", "INDIANB", "IDFCFIRSTB", "MAHABANK", "CENTRALBK", "IOB", "UCOBANK", "BANKINDIA"},
+	"NIFTY_FIN_SVC":  {"HDFCBANK", "ICICIBANK", "KOTAKBANK", "SBIN", "AXISBANK", "BAJFINANCE", "BAJAJFINSV", "SBILIFE", "HDFCLIFE", "ICICIPRULI", "ICICIGI", "SBICARD", "MUTHOOTFIN", "CHOLAFIN", "SHRIRAMFIN", "PFC", "RECLTD", "MANAPPURAM", "POONAWALLA", "LICHSGFIN"},
+	"NIFTY_MEDIA":    {"ZEEL", "SUNTV", "PVRINOX", "NETWORK18", "TV18BRDCST", "DISHTV", "NAZARA", "HATHWAY", "DEN", "SAREGAMA", "TIPSINDLTD", "NAVNETEDUL", "NDTV", "INFIBEAM", "AFFLE"},
 }
 
 // loadSectorMapping populates SectorState membership and sets StockState.SectorID.
-// Currently uses a static placeholder mapping; will be replaced with DB query.
-func loadSectorMapping(stocks map[string]*StockState, sectors map[string]*SectorState) {
-	// Initialize sector states from static mapping
-	for sectorName, memberISINs := range sectorMembers {
+// Tries the index_constituents DB table first; falls back to static symbol mapping.
+func loadSectorMapping(ctx context.Context, pool *pgxpool.Pool, stocks map[string]*StockState, sectors map[string]*SectorState) {
+	if pool != nil {
+		if n := loadSectorMappingFromDB(ctx, pool, stocks, sectors); n > 0 {
+			log.Printf("[baselines] loadSectorMapping: %d sectors from index_constituents table", n)
+			return
+		}
+	}
+	loadSectorMappingStatic(stocks, sectors)
+}
+
+// loadSectorMappingFromDB reads from the index_constituents table if it exists.
+// Returns the number of sectors populated (0 if table missing or empty).
+func loadSectorMappingFromDB(ctx context.Context, pool *pgxpool.Pool, stocks map[string]*StockState, sectors map[string]*SectorState) int {
+	rows, err := pool.Query(ctx,
+		`SELECT index_name, isin FROM index_constituents`)
+	if err != nil {
+		// Table likely doesn't exist yet — fall through to static
+		return 0
+	}
+	defer rows.Close()
+
+	sectorISINs := make(map[string][]string)
+	for rows.Next() {
+		var indexName, isin string
+		if err := rows.Scan(&indexName, &isin); err != nil {
+			return 0
+		}
+		sectorISINs[indexName] = append(sectorISINs[indexName], isin)
+	}
+	if rows.Err() != nil || len(sectorISINs) == 0 {
+		return 0
+	}
+
+	for sectorName, memberISINs := range sectorISINs {
+		sec := &SectorState{
+			Name:        sectorName,
+			MemberISINs: memberISINs,
+			TotalStocks: len(memberISINs),
+		}
+		sectors[sectorName] = sec
+		for _, isin := range memberISINs {
+			if s, ok := stocks[isin]; ok {
+				s.SectorID = sectorName
+			}
+		}
+	}
+	return len(sectorISINs)
+}
+
+// loadSectorMappingStatic resolves sectorSymbols (trading symbols) to ISINs
+// using the registered stocks map, then populates sectors.
+func loadSectorMappingStatic(stocks map[string]*StockState, sectors map[string]*SectorState) {
+	// Build symbol → ISIN lookup from registered stocks
+	symToISIN := make(map[string]string, len(stocks))
+	for _, s := range stocks {
+		if s.Symbol != "" {
+			symToISIN[s.Symbol] = s.ISIN
+		}
+	}
+
+	for sectorName, symbols := range sectorSymbols {
+		var memberISINs []string
+		for _, sym := range symbols {
+			if isin, ok := symToISIN[sym]; ok {
+				memberISINs = append(memberISINs, isin)
+			}
+		}
 		sec := &SectorState{
 			Name:        sectorName,
 			MemberISINs: memberISINs,
@@ -283,20 +347,19 @@ func loadSectorMapping(stocks map[string]*StockState, sectors map[string]*Sector
 		}
 		sectors[sectorName] = sec
 
-		// Set SectorID on each member stock
 		for _, isin := range memberISINs {
 			if s, ok := stocks[isin]; ok {
 				s.SectorID = sectorName
 			}
 		}
 	}
-	log.Printf("[baselines] loadSectorMapping: %d sectors initialized (static mapping)", len(sectorMembers))
+	log.Printf("[baselines] loadSectorMapping: %d sectors initialized (static mapping)", len(sectorSymbols))
 }
 
 // GetSectorNames returns the list of known sector names from the static mapping.
 func GetSectorNames() []string {
-	names := make([]string, 0, len(sectorMembers))
-	for name := range sectorMembers {
+	names := make([]string, 0, len(sectorSymbols))
+	for name := range sectorSymbols {
 		names = append(names, name)
 	}
 	return names
