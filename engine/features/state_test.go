@@ -1,6 +1,9 @@
 package features
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestStockState_Defaults(t *testing.T) {
 	var s StockState
@@ -218,5 +221,42 @@ func TestMarketState_MultipleStocks(t *testing.T) {
 	}
 	if m.TotalMarketVolume != 650 {
 		t.Errorf("after flip: TotalMarketVolume = %d, want 650 (200+400+50)", m.TotalMarketVolume)
+	}
+}
+
+func TestSlotVolumeAccumulator(t *testing.T) {
+	e := NewFeatureEngine(nil)
+	e.RegisterStock("INE001", "TEST", "")
+	e.session.SessionStart(time.Date(2026, 3, 24, 9, 0, 0, 0, time.Local))
+
+	slot0Time := time.Date(2026, 3, 24, 9, 16, 0, 0, time.Local) // slot 0
+	slot1Time := time.Date(2026, 3, 24, 9, 21, 0, 0, time.Local) // slot 1
+
+	// Test 1: First tick sets slot and volume
+	e.handleTick(TickEvent{ISIN: "INE001", LTP: 100, Volume: 500, TS: slot0Time})
+	s := e.Stock("INE001")
+	if !s.CurrentSlotSet {
+		t.Fatal("CurrentSlotSet should be true after first tick")
+	}
+	if s.CurrentSlot != 0 {
+		t.Errorf("CurrentSlot = %d, want 0", s.CurrentSlot)
+	}
+	if s.CurrentSlotVol != 500 {
+		t.Errorf("CurrentSlotVol = %d, want 500", s.CurrentSlotVol)
+	}
+
+	// Test 2: Same slot accumulates
+	e.handleTick(TickEvent{ISIN: "INE001", LTP: 101, Volume: 800, TS: slot0Time.Add(30 * time.Second)})
+	if s.CurrentSlotVol != 800 {
+		t.Errorf("CurrentSlotVol = %d, want 800 (500 + 300)", s.CurrentSlotVol)
+	}
+
+	// Test 3: New slot resets accumulator
+	e.handleTick(TickEvent{ISIN: "INE001", LTP: 102, Volume: 1000, TS: slot1Time})
+	if s.CurrentSlot != 1 {
+		t.Errorf("CurrentSlot = %d, want 1", s.CurrentSlot)
+	}
+	if s.CurrentSlotVol != 200 {
+		t.Errorf("CurrentSlotVol = %d, want 200 (delta from 800 to 1000)", s.CurrentSlotVol)
 	}
 }

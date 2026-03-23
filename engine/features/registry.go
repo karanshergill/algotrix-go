@@ -177,7 +177,7 @@ func timeToSlot(t time.Time) int {
 }
 
 // ---------------------------------------------------------------------------
-// NewDefaultRegistry — creates a registry with all 17 features registered.
+// NewDefaultRegistry — creates a registry with all 19 features registered.
 // ---------------------------------------------------------------------------
 
 // NewDefaultRegistry creates a Registry with all standard features.

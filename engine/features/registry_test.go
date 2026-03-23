@@ -169,8 +169,8 @@ func TestTimeToSlot(t *testing.T) {
 func TestRegistry_FeatureNames(t *testing.T) {
 	r := NewDefaultRegistry()
 	names := r.FeatureNames()
-	if len(names) != 17 {
-		t.Errorf("expected 17 features, got %d: %v", len(names), names)
+	if len(names) != 19 {
+		t.Errorf("expected 19 features, got %d: %v", len(names), names)
 	}
 
 	// Verify expected names are present
@@ -179,6 +179,7 @@ func TestRegistry_FeatureNames(t *testing.T) {
 		"day_range_pct": true, "exhaustion": true,
 		"volume_spike_z": true, "buy_pressure": true,
 		"buy_pressure_5m": true, "update_intensity": true,
+		"volume_spike_ratio": true, "classified_volume_5m": true,
 		"book_imbalance": true, "book_imbalance_weighted": true, "spread_bps": true,
 		"breadth_ratio": true, "vwap_breadth": true, "market_buy_pressure": true,
 		"sector_breadth": true, "sector_buy_pressure": true,

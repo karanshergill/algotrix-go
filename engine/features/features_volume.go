@@ -1,6 +1,6 @@
 package features
 
-// RegisterVolumeFeatures registers the 4 volume-category features (tick-triggered).
+// RegisterVolumeFeatures registers the 6 volume-category features (tick-triggered).
 func RegisterVolumeFeatures(r *Registry) {
 	r.Register(FeatureDef{
 		Name: "volume_spike_z", Version: 1, Category: "volume",
@@ -48,6 +48,34 @@ func RegisterVolumeFeatures(r *Registry) {
 		Ready:   func(s *StockState, m *MarketState) bool { return true },
 		Compute: func(s *StockState, m *MarketState, sec *SectorState) float64 {
 			return float64(s.Updates1m.Sum())
+		},
+	})
+
+	r.Register(FeatureDef{
+		Name: "volume_spike_ratio", Version: 1, Category: "volume",
+		Trigger: TriggerTick,
+		Ready: func(s *StockState, m *MarketState) bool {
+			if !s.CurrentSlotSet {
+				return false
+			}
+			b, ok := s.VolumeSlot[s.CurrentSlot]
+			return ok && b.Mean >= 10000 && b.Samples >= 5
+		},
+		Compute: func(s *StockState, m *MarketState, sec *SectorState) float64 {
+			b := s.VolumeSlot[s.CurrentSlot]
+			if s.CurrentSlotVol <= 0 {
+				return 0
+			}
+			return float64(s.CurrentSlotVol) / b.Mean
+		},
+	})
+
+	r.Register(FeatureDef{
+		Name: "classified_volume_5m", Version: 1, Category: "volume",
+		Trigger: TriggerTick,
+		Ready:   func(s *StockState, m *MarketState) bool { return true },
+		Compute: func(s *StockState, m *MarketState, sec *SectorState) float64 {
+			return float64(s.BuyVol5m.Sum() + s.SellVol5m.Sum())
 		},
 	})
 }

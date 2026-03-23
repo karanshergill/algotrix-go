@@ -102,6 +102,11 @@ func (sm *SessionManager) SessionStart(date time.Time) {
 			s.Low5m.Reset()
 		}
 
+		// Reset slot volume accumulator
+		s.CurrentSlotVol = 0
+		s.CurrentSlot = 0
+		s.CurrentSlotSet = false
+
 		// Reset delta tracking
 		s.prevRegistered = false
 		s.prevWasUp = false

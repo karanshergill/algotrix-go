@@ -69,6 +69,11 @@ type StockState struct {
 	High5m    *RollingExtreme // 300s max
 	Low5m     *RollingExtreme // 300s min
 
+	// === Slot Volume Accumulator ===
+	CurrentSlotVol int64 // volume accumulated in the current 5-min slot
+	CurrentSlot    int   // current slot index (0 = 09:15, 1 = 09:20, ...)
+	CurrentSlotSet bool  // true after first tick sets the slot
+
 	// === Pre-Loaded Baselines ===
 	ATR14d         float64
 	AvgDailyVolume int64

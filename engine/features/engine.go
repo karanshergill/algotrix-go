@@ -239,6 +239,16 @@ func (e *FeatureEngine) handleTick(ev TickEvent) {
 		s.Updates1m.Add(ev.TS, 1)
 		s.High5m.Add(ev.TS, ev.LTP)
 		s.Low5m.Add(ev.TS, ev.LTP)
+
+		// Slot volume accumulator — resets on slot boundary
+		currentSlot := timeToSlot(ev.TS)
+		if !s.CurrentSlotSet || currentSlot != s.CurrentSlot {
+			s.CurrentSlot = currentSlot
+			s.CurrentSlotVol = volumeDelta
+			s.CurrentSlotSet = true
+		} else {
+			s.CurrentSlotVol += volumeDelta
+		}
 	}
 
 	// Compute VWAP
