@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { HeaderToolbar } from '@/components/layout/header-toolbar'
+import { getISTDate } from '@/lib/market-hours'
 import { useSignals, useSignalSummary } from './use-signals'
 
 const SIGNAL_COLORS: Record<string, string> = {
@@ -24,7 +25,7 @@ function signalBadge(type: string) {
 }
 
 export function SignalsPage() {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getISTDate()
   const [date, setDate] = useState(today)
   const [screenerFilter, setScreenerFilter] = useState<string>('')
   const [typeFilter, setTypeFilter] = useState<string>('')

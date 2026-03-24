@@ -3,7 +3,7 @@ import { format } from 'date-fns'
 import { Moon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { isMarketOpen } from '@/lib/market-hours'
+import { isMarketOpen, getISTDate } from '@/lib/market-hours'
 import { useSignalSummary } from '@/features/signals/use-signals'
 import type { Signal, SignalSummary } from '@/features/signals/types'
 import { useQuery } from '@tanstack/react-query'
@@ -21,7 +21,7 @@ async function fetchRecentSignals(date: string): Promise<Signal[]> {
 }
 
 export function RecentSignals() {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getISTDate()
   const marketOpen = isMarketOpen()
   const [activeScreener, setActiveScreener] = useState<string | null>(null)
 
@@ -133,7 +133,7 @@ export function RecentSignals() {
 }
 
 export function useRecentSignalCount(): number {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getISTDate()
   const { data: summary } = useSignalSummary(today)
   return summary?.reduce((a, s) => a + s.count, 0) ?? 0
 }
