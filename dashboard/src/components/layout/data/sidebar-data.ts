@@ -27,6 +27,8 @@ import {
   AudioWaveform,
   Command,
   GalleryVerticalEnd,
+  Radio,
+  Globe,
 } from 'lucide-react'
 import { ClerkLogo } from '@/assets/clerk-logo'
 import { type SidebarData } from '../types'
@@ -64,6 +66,11 @@ export const sidebarData: SidebarData = {
           icon: LayoutDashboard,
         },
         {
+          title: 'Live Feed',
+          url: '/live-feed',
+          icon: Radio,
+        },
+        {
           title: 'OHLCV Data',
           url: '/ohlcv',
           icon: Database,
@@ -77,6 +84,11 @@ export const sidebarData: SidebarData = {
           title: 'Watchlist Builder',
           url: '/watchlist',
           icon: Crosshair,
+        },
+        {
+          title: 'Universe Explorer',
+          url: '/universe',
+          icon: Globe,
         },
         {
           title: 'Backtests',
