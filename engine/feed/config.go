@@ -32,10 +32,16 @@ type StorageConfig struct {
 	TicksTable  string `yaml:"ticks_table"`
 }
 
+type HubConfig struct {
+	Enabled bool `yaml:"enabled"`
+	Port    int  `yaml:"port"`
+}
+
 type FeedConfig struct {
 	TBT        TBTConfig        `yaml:"tbt"`
 	DataSocket DataSocketConfig `yaml:"datasocket"`
 	Storage    StorageConfig    `yaml:"storage"`
+	Hub        HubConfig        `yaml:"hub"`
 }
 
 type Config struct {
@@ -62,6 +68,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.Feed.DataSocket.FlushIntervalMs <= 0 {
 		cfg.Feed.DataSocket.FlushIntervalMs = 100
+	}
+	if cfg.Feed.Hub.Port <= 0 {
+		cfg.Feed.Hub.Port = 3002
 	}
 
 	return &cfg, nil

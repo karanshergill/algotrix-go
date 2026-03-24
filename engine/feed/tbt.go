@@ -44,9 +44,10 @@ type TBTFeed struct {
 	connDone chan struct{}
 	// reconnectFailed is closed if reconnection permanently fails.
 	reconnectFailed chan struct{}
+	hub             *Hub
 }
 
-func NewTBTFeed(config *Config, token string, symbols []string, pool *pgxpool.Pool, symbolToISIN map[string]string) *TBTFeed {
+func NewTBTFeed(config *Config, token string, symbols []string, pool *pgxpool.Pool, symbolToISIN map[string]string, hub *Hub) *TBTFeed {
 	return &TBTFeed{
 		config:          config,
 		token:           token,
@@ -58,6 +59,7 @@ func NewTBTFeed(config *Config, token string, symbols []string, pool *pgxpool.Po
 		done:            make(chan struct{}),
 		connDone:        make(chan struct{}),
 		reconnectFailed: make(chan struct{}),
+		hub:             hub,
 	}
 }
 
