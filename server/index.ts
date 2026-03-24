@@ -11,6 +11,7 @@ import symbols from './routes/symbols'
 import watchlist from './routes/watchlist'
 import backtest from './routes/backtest'
 import signals from './routes/signals'
+import universe from './routes/universe'
 
 const app = new Hono()
 
@@ -25,6 +26,7 @@ app.route('/api/sectors', sectors)
 app.route('/api/signals', signals)
 app.route('/api/symbols', symbols)
 app.route('/api/watchlists', watchlist)
+app.route('/api/universe', universe)
 
 app.get('/api/health', (c) => c.json({ status: 'ok' }))
 
