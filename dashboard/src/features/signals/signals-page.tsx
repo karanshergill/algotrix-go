@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { HeaderToolbar } from '@/components/layout/header-toolbar'
 import { getISTDate } from '@/lib/market-hours'
 import { DateNavigator } from '@/components/date-navigator'
+import { formatScreenerName, formatSignalType } from '@/lib/format-signal'
 import { useSignals, useSignalSummary } from './use-signals'
 
 const SIGNAL_COLORS: Record<string, string> = {
@@ -19,7 +20,7 @@ function signalBadge(type: string) {
   const cls = SIGNAL_COLORS[type.toLowerCase()] ?? 'text-muted-foreground border-border'
   return (
     <Badge variant='outline' className={cls}>
-      {type}
+      {formatSignalType(type)}
     </Badge>
   )
 }
@@ -70,7 +71,7 @@ export function SignalsPage() {
           <option value=''>All Screeners</option>
           {screeners.map((s) => (
             <option key={s} value={s}>
-              {s}
+              {formatScreenerName(s)}
             </option>
           ))}
         </select>
@@ -82,7 +83,7 @@ export function SignalsPage() {
           <option value=''>All Types</option>
           {signalTypes.map((t) => (
             <option key={t} value={t}>
-              {t}
+              {t.toUpperCase()}
             </option>
           ))}
         </select>
@@ -99,7 +100,7 @@ export function SignalsPage() {
             <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-4'>
               {summary.map((s) => (
                 <Card
-                  key={s.screener_name}
+                  key={formatScreenerName(s.screener_name)}
                   className='p-3 cursor-pointer hover:bg-muted/20 transition-colors'
                   onClick={() =>
                     setScreenerFilter(
@@ -108,7 +109,7 @@ export function SignalsPage() {
                   }
                 >
                   <div className='text-[10px] text-muted-foreground truncate'>
-                    {s.screener_name}
+                    {formatScreenerName(s.screener_name)}
                   </div>
                   <div className='text-xl font-bold tabular-nums mt-0.5'>
                     {s.count}
@@ -172,7 +173,7 @@ export function SignalsPage() {
                       </td>
                       <td className='px-4 py-2.5'>
                         <Badge variant='secondary' className='text-[10px]'>
-                          {sig.screener_name}
+                          {formatScreenerName(sig.screener_name)}
                         </Badge>
                       </td>
                       <td className='px-4 py-2.5 font-medium'>
