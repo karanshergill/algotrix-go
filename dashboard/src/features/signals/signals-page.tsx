@@ -4,9 +4,9 @@ import { Zap } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Input } from '@/components/ui/input'
 import { HeaderToolbar } from '@/components/layout/header-toolbar'
 import { getISTDate } from '@/lib/market-hours'
+import { DateNavigator } from '@/components/date-navigator'
 import { useSignals, useSignalSummary } from './use-signals'
 
 const SIGNAL_COLORS: Record<string, string> = {
@@ -61,12 +61,7 @@ export function SignalsPage() {
 
       {/* Filters */}
       <div className='flex items-center gap-3 px-6 py-2 border-b border-border/50 shrink-0'>
-        <Input
-          type='date'
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className='h-7 w-36 text-xs'
-        />
+        <DateNavigator value={date} onChange={setDate} />
         <select
           value={screenerFilter}
           onChange={(e) => setScreenerFilter(e.target.value)}
