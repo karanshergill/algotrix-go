@@ -29,8 +29,8 @@ func Setup(ctx context.Context, pool *pgxpool.Pool) (*Engine, error) {
 		NewEarlyMomentumScreener(),
 		NewSniperScreener(),
 		NewTridentScreener(),
-		NewThinMomentumScreener(),
-		NewBreakoutScreener(thresholds),
+		// NewThinMomentumScreener(),    // disabled per Ricky
+		// NewBreakoutScreener(thresholds), // disabled per Ricky
 	}
 
 	// 4. Create engine
