@@ -67,6 +67,9 @@ func main() {
 		case "market-data":
 			runMarketData()
 			return
+		case "universe-refresh":
+			runUniverseRefresh()
+			return
 		}
 	}
 
@@ -334,6 +337,49 @@ func loadTradeableSymbols(dsn string) ([]string, error) {
 		symbols = append(symbols, s)
 	}
 	return symbols, rows.Err()
+}
+
+// runUniverseRefresh recalculates the is_tradeable flag on the symbols table.
+// Intended to run daily pre-market via cron (e.g. 8:45 AM IST).
+// Usage: ./algotrix universe-refresh
+func runUniverseRefresh() {
+	dsn := "postgres://me:algotrix@localhost:5432/atdb"
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		log.Fatalf("[universe-refresh] connect: %v", err)
+	}
+	defer pool.Close()
+
+	// Reset all
+	tag, err := pool.Exec(ctx, `UPDATE symbols SET is_tradeable = false WHERE is_tradeable = true`)
+	if err != nil {
+		log.Fatalf("[universe-refresh] reset: %v", err)
+	}
+	log.Printf("[universe-refresh] reset %d rows to false", tag.RowsAffected())
+
+	// Set qualified stocks
+	tag, err = pool.Exec(ctx, `
+		UPDATE symbols s SET is_tradeable = true
+		FROM (
+		  SELECT DISTINCT isin
+		  FROM nse_cm_bhavcopy
+		  WHERE date >= CURRENT_DATE - INTERVAL '20 days'
+		  GROUP BY isin
+		  HAVING
+		    MAX(close) >= 100
+		    AND AVG(volume) >= 100000
+		    AND AVG(traded_value) >= 50000000
+		    AND COUNT(DISTINCT date) >= (
+		      SELECT COUNT(DISTINCT date) FROM nse_cm_bhavcopy
+		      WHERE date >= CURRENT_DATE - INTERVAL '20 days'
+		    )
+		) q
+		WHERE s.isin = q.isin AND s.status = 'active'`)
+	if err != nil {
+		log.Fatalf("[universe-refresh] update: %v", err)
+	}
+	log.Printf("[universe-refresh] set %d stocks as tradeable", tag.RowsAffected())
 }
 
 // runBhavcopy fetches NSE CM bhavcopy data and stores it in nse_cm_bhavcopy.
