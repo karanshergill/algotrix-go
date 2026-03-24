@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/karanshergill/algotrix-go/data/nse"
 	"github.com/karanshergill/algotrix-go/db/conns"
@@ -204,7 +205,8 @@ func runScrips() {
 }
 
 // runFeed starts the live market data feed system.
-// Usage: go run . feed --symbols NSE:RELIANCE-EQ,NSE:HDFCBANK-EQ --config feed/config.yaml
+// Usage: go run . feed [--symbols NSE:RELIANCE-EQ,NSE:HDFCBANK-EQ] --config feed/config.yaml
+// If --symbols is omitted, qualified symbols are loaded from DB (WHERE is_tradeable = true).
 func runFeed() {
 	var symbolsFlag, configPath string
 	configPath = "feed/config.yaml" // default
@@ -216,15 +218,6 @@ func runFeed() {
 		if arg == "--config" && i+1 < len(os.Args) {
 			configPath = os.Args[i+1]
 		}
-	}
-
-	if symbolsFlag == "" {
-		log.Fatal("--symbols is required. Example: --symbols NSE:RELIANCE-EQ,NSE:HDFCBANK-EQ")
-	}
-
-	symbolList := strings.Split(symbolsFlag, ",")
-	for i := range symbolList {
-		symbolList[i] = strings.TrimSpace(symbolList[i])
 	}
 
 	// Auth.
@@ -256,6 +249,27 @@ func runFeed() {
 	} else {
 		log.Printf("[FeatureEngine] LIVE — %d stocks, features at http://127.0.0.1:3003/features", len(feEngine.Stocks()))
 	}
+
+	// Resolve symbol list: CLI flag or DB query
+	var symbolList []string
+	if symbolsFlag != "" {
+		symbolList = strings.Split(symbolsFlag, ",")
+		for i := range symbolList {
+			symbolList[i] = strings.TrimSpace(symbolList[i])
+		}
+		log.Printf("[Feed] using %d symbols from --symbols flag", len(symbolList))
+	} else {
+		symbolList, err = loadTradeableSymbols(feedCfg.Feed.Storage.PostgresDSN)
+		if err != nil {
+			log.Fatalf("[Feed] failed to load symbols from DB: %v", err)
+		}
+		log.Printf("[Feed] loaded %d tradeable symbols from DB", len(symbolList))
+	}
+
+	if len(symbolList) == 0 {
+		log.Fatal("[Feed] no symbols to subscribe — check is_tradeable or --symbols flag")
+	}
+
 	// --- Screener Engine: wire after feature engine ---
 	algotrixDSN := "postgres://me:algotrix@localhost:5432/algotrix"
 	scrEngine, err := screeners.Setup(feCtx, algotrixDSN)
@@ -290,6 +304,36 @@ func runFeed() {
 	if err := recorder.Start(a.AccessToken()); err != nil {
 		log.Fatal("Feed error: ", err)
 	}
+}
+
+// loadTradeableSymbols queries fy_symbols from the symbols table where is_tradeable = true.
+// Also includes active index fy_symbols.
+func loadTradeableSymbols(dsn string) ([]string, error) {
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		return nil, fmt.Errorf("connect: %w", err)
+	}
+	defer pool.Close()
+
+	rows, err := pool.Query(ctx,
+		`SELECT fy_symbol FROM symbols WHERE status = 'active' AND is_tradeable = true
+		 UNION ALL
+		 SELECT fy_symbol FROM indices WHERE is_active = true`)
+	if err != nil {
+		return nil, fmt.Errorf("query: %w", err)
+	}
+	defer rows.Close()
+
+	var symbols []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		symbols = append(symbols, s)
+	}
+	return symbols, rows.Err()
 }
 
 // runBhavcopy fetches NSE CM bhavcopy data and stores it in nse_cm_bhavcopy.
