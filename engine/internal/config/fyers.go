@@ -12,6 +12,7 @@ type FyersConfig struct {
     SecretKey   string `yaml:"secret_key"`
     RedirectURL string `yaml:"redirect_url"`
     TokenPath   string `yaml:"token_path"`
+    Pin         string `yaml:"pin"`
 }
 
 type Config struct {

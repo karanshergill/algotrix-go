@@ -77,7 +77,7 @@ func New(cfg config.FyersConfig) *Auth {
 	
 		resp, err := a.client.GenerateAccessTokenFromRefreshToken(
 			a.token.RefreshToken,
-			"",
+			a.cfg.Pin,
 			a.client,
 		)
 		if err != nil {
