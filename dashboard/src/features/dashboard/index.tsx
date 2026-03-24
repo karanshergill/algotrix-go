@@ -15,7 +15,7 @@ import { TopNav } from '@/components/layout/top-nav'
 import { Search } from '@/components/search'
 import { Analytics } from './components/analytics'
 import { Overview } from './components/overview'
-import { RecentSales } from './components/recent-sales'
+import { RecentSignals, useRecentSignalCount } from './components/recent-signals'
 import { SymbolUniverse } from './components/symbol-universe'
 
 export function Dashboard() {
@@ -68,17 +68,7 @@ export function Dashboard() {
                   <Overview />
                 </CardContent>
               </Card>
-              <Card className='col-span-1 lg:col-span-3'>
-                <CardHeader>
-                  <CardTitle>Recent Sales</CardTitle>
-                  <CardDescription>
-                    You made 265 sales this month.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <RecentSales />
-                </CardContent>
-              </Card>
+              <RecentSignalsCard />
             </div>
           </TabsContent>
           <TabsContent value='analytics' className='space-y-4'>
@@ -87,6 +77,23 @@ export function Dashboard() {
         </Tabs>
       </Main>
     </>
+  )
+}
+
+function RecentSignalsCard() {
+  const count = useRecentSignalCount()
+  return (
+    <Card className='col-span-1 lg:col-span-3'>
+      <CardHeader>
+        <CardTitle>Recent Signals</CardTitle>
+        <CardDescription>
+          {count} signal{count !== 1 ? 's' : ''} today
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <RecentSignals />
+      </CardContent>
+    </Card>
   )
 }
 

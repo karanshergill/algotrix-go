@@ -34,6 +34,14 @@ signals.get('/', async (c) => {
     idx++
   }
 
+  const limit = c.req.query('limit')
+  let limitClause = ''
+  if (limit) {
+    limitClause = ` LIMIT $${idx}`
+    params.push(parseInt(limit, 10))
+    idx++
+  }
+
   const where = conditions.join(' AND ')
   const result = await algotrixPool.query(
     `SELECT id, session_date, triggered_at, screener_name, security_id,
@@ -41,7 +49,7 @@ signals.get('/', async (c) => {
             ltp, percent_above, metadata, trigger_values
      FROM signals
      WHERE ${where}
-     ORDER BY triggered_at DESC`,
+     ORDER BY triggered_at DESC${limitClause}`,
     params
   )
 
