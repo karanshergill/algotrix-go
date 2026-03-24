@@ -275,6 +275,8 @@ func runFeed() {
 
 	// --- Screener Engine: wire after feature engine ---
 	algotrixDSN := "postgres://me:algotrix@localhost:5432/algotrix"
+	// Signal broadcast function — set after recorder is created
+	var broadcastSignal func(map[string]interface{})
 	scrEngine, err := screeners.Setup(feCtx, algotrixDSN)
 	if err != nil {
 		log.Printf("[Screener] setup failed (non-fatal): %v", err)
@@ -291,11 +293,29 @@ func runFeed() {
 			if !ok {
 				return
 			}
-			scrEngine.ProcessTick(isin, &stockSnap, &snap.Market)
+			signals := scrEngine.ProcessTick(isin, &stockSnap, &snap.Market)
+			if broadcastSignal != nil {
+				for _, sig := range signals {
+					broadcastSignal(map[string]interface{}{
+						"screener":      sig.ScreenerName,
+						"signal_type":   string(sig.SignalType),
+						"symbol":        sig.Symbol,
+						"isin":          sig.ISIN,
+						"ltp":           sig.LTP,
+						"trigger_price": sig.TriggerPrice,
+						"triggered_at":  sig.TriggeredAt.Format("2006-01-02T15:04:05-07:00"),
+					})
+				}
+			}
 		})
 	}
 
 	recorder := feed.NewRecorder(configPath, symbolList)
+
+	// Wire signal broadcasting through Hub WebSocket
+	if recorder.Hub() != nil {
+		broadcastSignal = recorder.Hub().BroadcastSignal
+	}
 
 	// Wire tick callback to feature engine
 	if feAdapter != nil {

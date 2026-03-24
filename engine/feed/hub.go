@@ -218,3 +218,16 @@ func (h *Hub) Stop() {
 	h.mu.Unlock()
 	logTS("[Hub] stopped")
 }
+
+// BroadcastSignal serializes a screener signal and broadcasts it.
+func (h *Hub) BroadcastSignal(signal map[string]interface{}) {
+	msg := map[string]interface{}{
+		"type":   "signal",
+		"signal": signal,
+	}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+	h.Broadcast(data)
+}
