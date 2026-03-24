@@ -69,6 +69,10 @@ type FeatureEngine struct {
 
 	latestSnapshot atomic.Pointer[EngineSnapshot]
 
+	dirtyISINs     map[string]bool
+	dirtyFeatures  map[string]map[string]float64
+	snapshotTicker *time.Ticker
+
 	// Optional callbacks for testing (called after each event processed)
 	onTick  func(isin string)
 	onDepth func(isin string)
@@ -85,15 +89,17 @@ func NewFeatureEngine(config *EngineConfig) *FeatureEngine {
 	market := &MarketState{}
 
 	fe := &FeatureEngine{
-		stocks:      stocks,
-		sectors:     sectors,
-		market:      market,
-		session:     NewSessionManager(stocks, market, sectors),
-		registry:    NewDefaultRegistry(),
-		guards:      make(map[string]*FeedGuard),
-		guardConfig: config.GuardConfig,
-		tickCh:      make(chan TickEvent, config.TickBuffer),
-		depthCh:     make(chan DepthEvent, config.DepthBuffer),
+		stocks:        stocks,
+		sectors:       sectors,
+		market:        market,
+		session:       NewSessionManager(stocks, market, sectors),
+		registry:      NewDefaultRegistry(),
+		guards:        make(map[string]*FeedGuard),
+		guardConfig:   config.GuardConfig,
+		tickCh:        make(chan TickEvent, config.TickBuffer),
+		depthCh:       make(chan DepthEvent, config.DepthBuffer),
+		dirtyISINs:    make(map[string]bool),
+		dirtyFeatures: make(map[string]map[string]float64),
 	}
 	fe.latestSnapshot.Store(NewEngineSnapshot())
 	return fe
@@ -162,12 +168,17 @@ func (e *FeatureEngine) Run(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
+	e.snapshotTicker = time.NewTicker(250 * time.Millisecond)
+	defer e.snapshotTicker.Stop()
+
 	for {
 		select {
 		case ev := <-e.tickCh:
 			e.handleTick(ev)
 		case ev := <-e.depthCh:
 			e.handleDepth(ev)
+		case <-e.snapshotTicker.C:
+			e.rebuildSnapshot()
 		case <-ticker.C:
 			e.handleTimer()
 		case <-ctx.Done():
@@ -379,24 +390,60 @@ func (e *FeatureEngine) Snapshot() *EngineSnapshot {
 	return e.latestSnapshot.Load()
 }
 
-// updateSnapshotWithFeatures builds a new StockSnapshot with computed features
-// and atomically swaps the pointer.
+// updateSnapshotWithFeatures marks the stock as dirty and saves its features.
+// The actual snapshot rebuild happens on the 250ms timer in rebuildSnapshot.
 func (e *FeatureEngine) updateSnapshotWithFeatures(s *StockState, features map[string]float64) {
+	e.dirtyISINs[s.ISIN] = true
+	e.dirtyFeatures[s.ISIN] = features
+}
+
+// rebuildSnapshot builds a new EngineSnapshot from all dirty stocks.
+// Called every 250ms from the event loop — single-threaded, no mutex needed.
+func (e *FeatureEngine) rebuildSnapshot() {
+	if len(e.dirtyISINs) == 0 {
+		return
+	}
+
 	snap := e.latestSnapshot.Load()
-	newSnap := snap.Clone()
-	newSnap.Stocks[s.ISIN] = StockSnapshot{
-		ISIN:     s.ISIN,
-		Symbol:   s.Symbol,
-		LTP:      s.LTP,
-		Features: features,
-		Quality:  ComputeQuality(s, time.Now()),
+
+	// Build new stock map — copy all existing, update dirty ones
+	newStocks := make(map[string]StockSnapshot, len(snap.Stocks))
+	for k, v := range snap.Stocks {
+		newStocks[k] = v
 	}
-	newSnap.Market = MarketSnapshotFrom(e.market)
+
+	for isin := range e.dirtyISINs {
+		s := e.stocks[isin]
+		if s == nil {
+			continue
+		}
+		features := e.dirtyFeatures[isin]
+		newStocks[isin] = StockSnapshot{
+			ISIN:     s.ISIN,
+			Symbol:   s.Symbol,
+			LTP:      s.LTP,
+			Features: features,
+			Quality:  ComputeQuality(s, time.Now()),
+		}
+	}
+
+	// Build sectors
+	sectors := make(map[string]SectorSnapshot, len(e.sectors))
 	for id, sec := range e.sectors {
-		newSnap.Sectors[id] = SectorSnapshotFrom(sec)
+		sectors[id] = SectorSnapshotFrom(sec)
 	}
-	newSnap.TS = time.Now()
+
+	newSnap := &EngineSnapshot{
+		Stocks:  newStocks,
+		Market:  MarketSnapshotFrom(e.market),
+		Sectors: sectors,
+		TS:      time.Now(),
+	}
 	e.latestSnapshot.Store(newSnap)
+
+	// Clear dirty set
+	e.dirtyISINs = make(map[string]bool)
+	e.dirtyFeatures = make(map[string]map[string]float64)
 }
 
 // handleTimer is a placeholder for timer-triggered features.

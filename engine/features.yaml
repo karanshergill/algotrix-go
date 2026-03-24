@@ -1,8 +1,8 @@
 # features.yaml — Feature engine configuration
 
 engine:
-  tick_channel_buffer: 100000
-  depth_channel_buffer: 50000
+  tick_channel_buffer: 5000
+  depth_channel_buffer: 2000
   snapshot_clone_strategy: "copy_on_write"
 
 windows:
