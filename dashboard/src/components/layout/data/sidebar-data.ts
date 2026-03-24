@@ -6,6 +6,7 @@ import {
   FlaskConical,
   LayoutDashboard,
   Monitor,
+  Zap,
   Bug,
   ListTodo,
   FileX,
@@ -81,6 +82,11 @@ export const sidebarData: SidebarData = {
           title: 'Backtests',
           url: '/backtests',
           icon: FlaskConical,
+        },
+        {
+          title: 'Signals',
+          url: '/signals',
+          icon: Zap,
         },
         {
           title: 'Workflows',

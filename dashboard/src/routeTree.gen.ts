@@ -28,9 +28,12 @@ import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authen
 import { Route as AuthenticatedWorkflowsIndexRouteImport } from './routes/_authenticated/workflows/index'
 import { Route as AuthenticatedWatchlistIndexRouteImport } from './routes/_authenticated/watchlist/index'
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
+import { Route as AuthenticatedUniverseIndexRouteImport } from './routes/_authenticated/universe/index'
 import { Route as AuthenticatedTasksIndexRouteImport } from './routes/_authenticated/tasks/index'
+import { Route as AuthenticatedSignalsIndexRouteImport } from './routes/_authenticated/signals/index'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
 import { Route as AuthenticatedOhlcvIndexRouteImport } from './routes/_authenticated/ohlcv/index'
+import { Route as AuthenticatedLiveFeedIndexRouteImport } from './routes/_authenticated/live-feed/index'
 import { Route as AuthenticatedIndustryAndSectorPulseIndexRouteImport } from './routes/_authenticated/industry-and-sector-pulse/index'
 import { Route as AuthenticatedHelpCenterIndexRouteImport } from './routes/_authenticated/help-center/index'
 import { Route as AuthenticatedChatsIndexRouteImport } from './routes/_authenticated/chats/index'
@@ -141,11 +144,23 @@ const AuthenticatedUsersIndexRoute = AuthenticatedUsersIndexRouteImport.update({
   path: '/users/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedUniverseIndexRoute =
+  AuthenticatedUniverseIndexRouteImport.update({
+    id: '/universe/',
+    path: '/universe/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedTasksIndexRoute = AuthenticatedTasksIndexRouteImport.update({
   id: '/tasks/',
   path: '/tasks/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSignalsIndexRoute =
+  AuthenticatedSignalsIndexRouteImport.update({
+    id: '/signals/',
+    path: '/signals/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSettingsIndexRoute =
   AuthenticatedSettingsIndexRouteImport.update({
     id: '/',
@@ -157,6 +172,12 @@ const AuthenticatedOhlcvIndexRoute = AuthenticatedOhlcvIndexRouteImport.update({
   path: '/ohlcv/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedLiveFeedIndexRoute =
+  AuthenticatedLiveFeedIndexRouteImport.update({
+    id: '/live-feed/',
+    path: '/live-feed/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedIndustryAndSectorPulseIndexRoute =
   AuthenticatedIndustryAndSectorPulseIndexRouteImport.update({
     id: '/industry-and-sector-pulse/',
@@ -266,9 +287,12 @@ export interface FileRoutesByFullPath {
   '/chats': typeof AuthenticatedChatsIndexRoute
   '/help-center': typeof AuthenticatedHelpCenterIndexRoute
   '/industry-and-sector-pulse': typeof AuthenticatedIndustryAndSectorPulseIndexRoute
+  '/live-feed': typeof AuthenticatedLiveFeedIndexRoute
   '/ohlcv': typeof AuthenticatedOhlcvIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/signals': typeof AuthenticatedSignalsIndexRoute
   '/tasks': typeof AuthenticatedTasksIndexRoute
+  '/universe': typeof AuthenticatedUniverseIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
   '/watchlist': typeof AuthenticatedWatchlistIndexRoute
   '/workflows': typeof AuthenticatedWorkflowsIndexRoute
@@ -300,9 +324,12 @@ export interface FileRoutesByTo {
   '/chats': typeof AuthenticatedChatsIndexRoute
   '/help-center': typeof AuthenticatedHelpCenterIndexRoute
   '/industry-and-sector-pulse': typeof AuthenticatedIndustryAndSectorPulseIndexRoute
+  '/live-feed': typeof AuthenticatedLiveFeedIndexRoute
   '/ohlcv': typeof AuthenticatedOhlcvIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
+  '/signals': typeof AuthenticatedSignalsIndexRoute
   '/tasks': typeof AuthenticatedTasksIndexRoute
+  '/universe': typeof AuthenticatedUniverseIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
   '/watchlist': typeof AuthenticatedWatchlistIndexRoute
   '/workflows': typeof AuthenticatedWorkflowsIndexRoute
@@ -339,9 +366,12 @@ export interface FileRoutesById {
   '/_authenticated/chats/': typeof AuthenticatedChatsIndexRoute
   '/_authenticated/help-center/': typeof AuthenticatedHelpCenterIndexRoute
   '/_authenticated/industry-and-sector-pulse/': typeof AuthenticatedIndustryAndSectorPulseIndexRoute
+  '/_authenticated/live-feed/': typeof AuthenticatedLiveFeedIndexRoute
   '/_authenticated/ohlcv/': typeof AuthenticatedOhlcvIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/_authenticated/signals/': typeof AuthenticatedSignalsIndexRoute
   '/_authenticated/tasks/': typeof AuthenticatedTasksIndexRoute
+  '/_authenticated/universe/': typeof AuthenticatedUniverseIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
   '/_authenticated/watchlist/': typeof AuthenticatedWatchlistIndexRoute
   '/_authenticated/workflows/': typeof AuthenticatedWorkflowsIndexRoute
@@ -376,9 +406,12 @@ export interface FileRouteTypes {
     | '/chats'
     | '/help-center'
     | '/industry-and-sector-pulse'
+    | '/live-feed'
     | '/ohlcv'
     | '/settings/'
+    | '/signals'
     | '/tasks'
+    | '/universe'
     | '/users'
     | '/watchlist'
     | '/workflows'
@@ -410,9 +443,12 @@ export interface FileRouteTypes {
     | '/chats'
     | '/help-center'
     | '/industry-and-sector-pulse'
+    | '/live-feed'
     | '/ohlcv'
     | '/settings'
+    | '/signals'
     | '/tasks'
+    | '/universe'
     | '/users'
     | '/watchlist'
     | '/workflows'
@@ -448,9 +484,12 @@ export interface FileRouteTypes {
     | '/_authenticated/chats/'
     | '/_authenticated/help-center/'
     | '/_authenticated/industry-and-sector-pulse/'
+    | '/_authenticated/live-feed/'
     | '/_authenticated/ohlcv/'
     | '/_authenticated/settings/'
+    | '/_authenticated/signals/'
     | '/_authenticated/tasks/'
+    | '/_authenticated/universe/'
     | '/_authenticated/users/'
     | '/_authenticated/watchlist/'
     | '/_authenticated/workflows/'
@@ -606,11 +645,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedUsersIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/universe/': {
+      id: '/_authenticated/universe/'
+      path: '/universe'
+      fullPath: '/universe'
+      preLoaderRoute: typeof AuthenticatedUniverseIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/tasks/': {
       id: '/_authenticated/tasks/'
       path: '/tasks'
       fullPath: '/tasks'
       preLoaderRoute: typeof AuthenticatedTasksIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/signals/': {
+      id: '/_authenticated/signals/'
+      path: '/signals'
+      fullPath: '/signals'
+      preLoaderRoute: typeof AuthenticatedSignalsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/settings/': {
@@ -625,6 +678,13 @@ declare module '@tanstack/react-router' {
       path: '/ohlcv'
       fullPath: '/ohlcv'
       preLoaderRoute: typeof AuthenticatedOhlcvIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/live-feed/': {
+      id: '/_authenticated/live-feed/'
+      path: '/live-feed'
+      fullPath: '/live-feed'
+      preLoaderRoute: typeof AuthenticatedLiveFeedIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/industry-and-sector-pulse/': {
@@ -761,8 +821,11 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedChatsIndexRoute: typeof AuthenticatedChatsIndexRoute
   AuthenticatedHelpCenterIndexRoute: typeof AuthenticatedHelpCenterIndexRoute
   AuthenticatedIndustryAndSectorPulseIndexRoute: typeof AuthenticatedIndustryAndSectorPulseIndexRoute
+  AuthenticatedLiveFeedIndexRoute: typeof AuthenticatedLiveFeedIndexRoute
   AuthenticatedOhlcvIndexRoute: typeof AuthenticatedOhlcvIndexRoute
+  AuthenticatedSignalsIndexRoute: typeof AuthenticatedSignalsIndexRoute
   AuthenticatedTasksIndexRoute: typeof AuthenticatedTasksIndexRoute
+  AuthenticatedUniverseIndexRoute: typeof AuthenticatedUniverseIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
   AuthenticatedWatchlistIndexRoute: typeof AuthenticatedWatchlistIndexRoute
   AuthenticatedWorkflowsIndexRoute: typeof AuthenticatedWorkflowsIndexRoute
@@ -779,8 +842,11 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedHelpCenterIndexRoute: AuthenticatedHelpCenterIndexRoute,
   AuthenticatedIndustryAndSectorPulseIndexRoute:
     AuthenticatedIndustryAndSectorPulseIndexRoute,
+  AuthenticatedLiveFeedIndexRoute: AuthenticatedLiveFeedIndexRoute,
   AuthenticatedOhlcvIndexRoute: AuthenticatedOhlcvIndexRoute,
+  AuthenticatedSignalsIndexRoute: AuthenticatedSignalsIndexRoute,
   AuthenticatedTasksIndexRoute: AuthenticatedTasksIndexRoute,
+  AuthenticatedUniverseIndexRoute: AuthenticatedUniverseIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
   AuthenticatedWatchlistIndexRoute: AuthenticatedWatchlistIndexRoute,
   AuthenticatedWorkflowsIndexRoute: AuthenticatedWorkflowsIndexRoute,
