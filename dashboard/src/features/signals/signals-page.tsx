@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { HeaderToolbar } from '@/components/layout/header-toolbar'
 import { getISTDate } from '@/lib/market-hours'
 import { DateNavigator } from '@/components/date-navigator'
-import { formatScreenerName, formatSignalType } from '@/lib/format-signal'
+import { formatScreenerName, formatSignalType, screenerColorClass } from '@/lib/format-signal'
 import { useSignals, useSignalSummary } from './use-signals'
 
 const SIGNAL_COLORS: Record<string, string> = {
@@ -172,7 +172,7 @@ export function SignalsPage() {
                         {format(new Date(sig.triggered_at), 'HH:mm:ss')}
                       </td>
                       <td className='px-4 py-2.5'>
-                        <Badge variant='secondary' className='text-[10px]'>
+                        <Badge variant='outline' className={`text-xs font-medium ${screenerColorClass(sig.screener_name)}`}>
                           {formatScreenerName(sig.screener_name)}
                         </Badge>
                       </td>

@@ -4,7 +4,7 @@ import { Moon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { isMarketOpen, getISTDate } from '@/lib/market-hours'
-import { formatScreenerName, formatSignalType } from '@/lib/format-signal'
+import { formatScreenerName, formatSignalType, screenerColorClass } from '@/lib/format-signal'
 import { useSignalSummary } from '@/features/signals/use-signals'
 import type { Signal, SignalSummary } from '@/features/signals/types'
 import { useQuery } from '@tanstack/react-query'
@@ -112,7 +112,7 @@ export function RecentSignals() {
                 <span className='text-[10px] tabular-nums text-muted-foreground shrink-0'>
                   {format(new Date(sig.triggered_at), 'HH:mm:ss')}
                 </span>
-                <Badge variant='secondary' className='text-[10px] shrink-0'>
+                <Badge variant='outline' className={`text-[11px] font-medium shrink-0 ${screenerColorClass(sig.screener_name)}`}>
                   {formatScreenerName(sig.screener_name)}
                 </Badge>
                 <span className='text-xs font-medium truncate'>
