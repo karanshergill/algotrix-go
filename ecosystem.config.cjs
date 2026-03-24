@@ -31,7 +31,7 @@ module.exports = {
       name: 'nse-news',
       script: 'python3',
       args: '-u collector.py',
-      cwd: '/home/me/nse-news-collector',
+      cwd: '/home/me/projects/algotrix-go/news-collector',
       watch: false,
       max_memory_restart: '200M',
       out_file: '/tmp/nse-news-out.log',
