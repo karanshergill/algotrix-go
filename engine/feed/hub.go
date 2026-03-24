@@ -183,12 +183,10 @@ func (h *Hub) BroadcastDepth(symbol, isin string, row DepthRow) {
 		"type":    "depth",
 		"symbol":  symbol,
 		"isin":    isin,
-		"bestBid": row.BestBid,
-		"bestAsk": row.BestAsk,
-		"tbq":     row.Tbq,
-		"tsq":     row.Tsq,
-		"bids":    row.Bids,
-		"asks":    row.Asks,
+		"bestBid": row.BidPrice1,
+		"bestAsk": row.AskPrice1,
+		"tbq":     row.TotalBuyQty,
+		"tsq":     row.TotalSellQty,
 		"ts":      row.Timestamp.Unix(),
 	}
 

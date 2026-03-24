@@ -391,81 +391,51 @@ func (f *TBTFeed) onDepthUpdate(symbol string, feed *pb.MarketFeed, isSnapshot b
 	}
 
 	depth := feed.Depth
-	maxLevels := f.config.Feed.TBT.MaxDepthLevels
 	ts := now
 
-	var tbq, tsq int64
+	row := DepthRow{Timestamp: ts, ISIN: isin}
+
 	if depth.Tbq != nil {
-		tbq = int64(depth.Tbq.Value)
+		row.TotalBuyQty = int64(depth.Tbq.Value)
 	}
 	if depth.Tsq != nil {
-		tsq = int64(depth.Tsq.Value)
+		row.TotalSellQty = int64(depth.Tsq.Value)
 	}
 
-	// Fix 7: best_bid/ask top-level columns.
-	var bestBid, bestAsk, bestBidQty, bestAskQty float64
-	if len(depth.Bids) > 0 {
-		if depth.Bids[0].Price != nil {
-			bestBid = float64(depth.Bids[0].Price.Value) / 100.0
-		}
-		if depth.Bids[0].Qty != nil {
-			bestBidQty = float64(depth.Bids[0].Qty.Value)
-		}
-	}
-	if len(depth.Asks) > 0 {
-		if depth.Asks[0].Price != nil {
-			bestAsk = float64(depth.Asks[0].Price.Value) / 100.0
-		}
-		if depth.Asks[0].Qty != nil {
-			bestAskQty = float64(depth.Asks[0].Qty.Value)
-		}
-	}
+	// Flat bid/ask arrays — store top 5 levels only.
+	bidPrices := [5]*float32{&row.BidPrice1, &row.BidPrice2, &row.BidPrice3, &row.BidPrice4, &row.BidPrice5}
+	bidQtys := [5]*int32{&row.BidQty1, &row.BidQty2, &row.BidQty3, &row.BidQty4, &row.BidQty5}
+	bidOrders := [5]*int16{&row.BidOrders1, &row.BidOrders2, &row.BidOrders3, &row.BidOrders4, &row.BidOrders5}
+	askPrices := [5]*float32{&row.AskPrice1, &row.AskPrice2, &row.AskPrice3, &row.AskPrice4, &row.AskPrice5}
+	askQtys := [5]*int32{&row.AskQty1, &row.AskQty2, &row.AskQty3, &row.AskQty4, &row.AskQty5}
+	askOrders := [5]*int16{&row.AskOrders1, &row.AskOrders2, &row.AskOrders3, &row.AskOrders4, &row.AskOrders5}
 
-	// Build depth levels
-	bids := make([]DepthLevel, 0, min(maxLevels, len(depth.Bids)))
-	asks := make([]DepthLevel, 0, min(maxLevels, len(depth.Asks)))
-
-	for i := 0; i < maxLevels && i < len(depth.Bids); i++ {
+	for i := 0; i < 5 && i < len(depth.Bids); i++ {
 		bid := depth.Bids[i]
-		var price, qty, orders float64
 		if bid.Price != nil {
-			price = float64(bid.Price.Value) / 100.0
+			*bidPrices[i] = float32(float64(bid.Price.Value) / 100.0)
 		}
 		if bid.Qty != nil {
-			qty = float64(bid.Qty.Value)
+			*bidQtys[i] = int32(bid.Qty.Value)
 		}
 		if bid.Nord != nil {
-			orders = float64(bid.Nord.Value)
+			*bidOrders[i] = int16(bid.Nord.Value)
 		}
-		bids = append(bids, DepthLevel{Price: price, Qty: qty, Orders: orders})
 	}
-	for i := 0; i < maxLevels && i < len(depth.Asks); i++ {
+	for i := 0; i < 5 && i < len(depth.Asks); i++ {
 		ask := depth.Asks[i]
-		var price, qty, orders float64
 		if ask.Price != nil {
-			price = float64(ask.Price.Value) / 100.0
+			*askPrices[i] = float32(float64(ask.Price.Value) / 100.0)
 		}
 		if ask.Qty != nil {
-			qty = float64(ask.Qty.Value)
+			*askQtys[i] = int32(ask.Qty.Value)
 		}
 		if ask.Nord != nil {
-			orders = float64(ask.Nord.Value)
+			*askOrders[i] = int16(ask.Nord.Value)
 		}
-		asks = append(asks, DepthLevel{Price: price, Qty: qty, Orders: orders})
 	}
 
-	f.writer.WriteDepth(DepthRow{
-		Timestamp:  ts,
-		ISIN:       isin,
-		Tbq:        tbq,
-		Tsq:        tsq,
-		BestBid:    bestBid,
-		BestAsk:    bestAsk,
-		BestBidQty: bestBidQty,
-		BestAskQty: bestAskQty,
-		Bids:       bids,
-		Asks:       asks,
-	})
+	f.writer.WriteDepth(row)
 }
 
 // Fix 5: pingLoop exits when connDone OR done is closed.

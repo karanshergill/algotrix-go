@@ -272,62 +272,70 @@ func (f *DataSocketFeed) onDepthMessage(data map[string]interface{}) {
 	ts := time.Now()
 
 	// Extract 5-level depth from Fyers dp message.
-	// Fields: bid_price1..5, ask_price1..5, bid_size1..5, ask_size1..5, bid_order1..5, ask_order1..5
-	const levels = 5
-	bids := make([]DepthLevel, 0, levels)
-	asks := make([]DepthLevel, 0, levels)
-	for i := 1; i <= levels; i++ {
+	row := DepthRow{Timestamp: ts, ISIN: isin}
+
+	// Total buy/sell quantities (top-level fields if available).
+	if v, ok := asInt64(data["total_buy_qty"]); ok {
+		row.TotalBuyQty = v
+	}
+	if v, ok := asInt64(data["total_sell_qty"]); ok {
+		row.TotalSellQty = v
+	}
+
+	bidPrices := [5]*float32{&row.BidPrice1, &row.BidPrice2, &row.BidPrice3, &row.BidPrice4, &row.BidPrice5}
+	bidQtys := [5]*int32{&row.BidQty1, &row.BidQty2, &row.BidQty3, &row.BidQty4, &row.BidQty5}
+	bidOrders := [5]*int16{&row.BidOrders1, &row.BidOrders2, &row.BidOrders3, &row.BidOrders4, &row.BidOrders5}
+	askPrices := [5]*float32{&row.AskPrice1, &row.AskPrice2, &row.AskPrice3, &row.AskPrice4, &row.AskPrice5}
+	askQtys := [5]*int32{&row.AskQty1, &row.AskQty2, &row.AskQty3, &row.AskQty4, &row.AskQty5}
+	askOrders := [5]*int16{&row.AskOrders1, &row.AskOrders2, &row.AskOrders3, &row.AskOrders4, &row.AskOrders5}
+
+	hasAny := false
+	for i := 1; i <= 5; i++ {
 		suffix := fmt.Sprintf("%d", i)
-		bp, bpOk := asFloat64(data["bid_price"+suffix])
-		bs, bsOk := asFloat64(data["bid_size"+suffix])
-		bo, _ := asFloat64(data["bid_order"+suffix])
-		if bpOk || bsOk {
-			bids = append(bids, DepthLevel{Price: bp, Qty: bs, Orders: bo})
+		idx := i - 1
+
+		if bp, ok := asFloat64(data["bid_price"+suffix]); ok {
+			*bidPrices[idx] = float32(bp)
+			hasAny = true
+		}
+		if bs, ok := asFloat64(data["bid_size"+suffix]); ok {
+			*bidQtys[idx] = int32(bs)
+			hasAny = true
+		}
+		if bo, ok := asFloat64(data["bid_order"+suffix]); ok {
+			*bidOrders[idx] = int16(bo)
 		}
 
-		ap, apOk := asFloat64(data["ask_price"+suffix])
-		as, asOk := asFloat64(data["ask_size"+suffix])
-		ao, _ := asFloat64(data["ask_order"+suffix])
-		if apOk || asOk {
-			asks = append(asks, DepthLevel{Price: ap, Qty: as, Orders: ao})
+		if ap, ok := asFloat64(data["ask_price"+suffix]); ok {
+			*askPrices[idx] = float32(ap)
+			hasAny = true
+		}
+		if as, ok := asFloat64(data["ask_size"+suffix]); ok {
+			*askQtys[idx] = int32(as)
+			hasAny = true
+		}
+		if ao, ok := asFloat64(data["ask_order"+suffix]); ok {
+			*askOrders[idx] = int16(ao)
 		}
 	}
 
-	if len(bids) == 0 && len(asks) == 0 {
+	if !hasAny {
 		return
 	}
 
-	var bestBid, bestAsk, bestBidQty, bestAskQty float64
-	if len(bids) > 0 {
-		bestBid = bids[0].Price
-		bestBidQty = bids[0].Qty
+	// Sum quantities for total_buy/sell if not provided at top level.
+	if row.TotalBuyQty == 0 {
+		for _, q := range bidQtys {
+			row.TotalBuyQty += int64(*q)
+		}
 	}
-	if len(asks) > 0 {
-		bestAsk = asks[0].Price
-		bestAskQty = asks[0].Qty
-	}
-
-	// Sum all bid/ask quantities for tbq/tsq.
-	var tbq, tsq int64
-	for _, b := range bids {
-		tbq += int64(b.Qty)
-	}
-	for _, a := range asks {
-		tsq += int64(a.Qty)
+	if row.TotalSellQty == 0 {
+		for _, q := range askQtys {
+			row.TotalSellQty += int64(*q)
+		}
 	}
 
-	f.writer.WriteDepth(DepthRow{
-		Timestamp:  ts,
-		ISIN:       isin,
-		Tbq:        tbq,
-		Tsq:        tsq,
-		BestBid:    bestBid,
-		BestAsk:    bestAsk,
-		BestBidQty: bestBidQty,
-		BestAskQty: bestAskQty,
-		Bids:       bids,
-		Asks:       asks,
-	})
+	f.writer.WriteDepth(row)
 }
 
 // Fix 6: No reflection. Exhaustive type matching including SDK's FloatSDK.

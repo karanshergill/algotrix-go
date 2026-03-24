@@ -2,7 +2,6 @@ package feed
 
 import (
 	"context"
-	"encoding/json"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -11,25 +10,22 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// DepthLevel is one price level in the order book.
-type DepthLevel struct {
-	Price  float64 `json:"price"`
-	Qty    float64 `json:"qty"`
-	Orders float64 `json:"orders"`
-}
-
-// DepthRow is one depth snapshot row for nse_cm_depth.
+// DepthRow is one depth snapshot row for nse_cm_depth (flat columns).
 type DepthRow struct {
-	Timestamp   time.Time
-	ISIN        string
-	Tbq         int64
-	Tsq         int64
-	BestBid     float64
-	BestAsk     float64
-	BestBidQty  float64
-	BestAskQty  float64
-	Bids        []DepthLevel
-	Asks        []DepthLevel
+	Timestamp  time.Time
+	ISIN       string
+	TotalBuyQty  int64
+	TotalSellQty int64
+	BidPrice1  float32; BidQty1  int32; BidOrders1  int16
+	AskPrice1  float32; AskQty1  int32; AskOrders1  int16
+	BidPrice2  float32; BidQty2  int32; BidOrders2  int16
+	AskPrice2  float32; AskQty2  int32; AskOrders2  int16
+	BidPrice3  float32; BidQty3  int32; BidOrders3  int16
+	AskPrice3  float32; AskQty3  int32; AskOrders3  int16
+	BidPrice4  float32; BidQty4  int32; BidOrders4  int16
+	AskPrice4  float32; AskQty4  int32; AskOrders4  int16
+	BidPrice5  float32; BidQty5  int32; BidOrders5  int16
+	AskPrice5  float32; AskQty5  int32; AskOrders5  int16
 }
 
 // TickRow is one tick row for nse_cm_ticks.
@@ -156,17 +152,35 @@ func (w *PGWriter) flushDepth(rows []DepthRow) {
 
 	inputRows := make([][]interface{}, 0, len(rows))
 	for _, r := range rows {
-		bidsJSON, _ := json.Marshal(r.Bids)
-		asksJSON, _ := json.Marshal(r.Asks)
 		inputRows = append(inputRows, []interface{}{
 			r.Timestamp, r.ISIN,
-			r.Tbq, r.Tsq,
-			r.BestBid, r.BestAsk, r.BestBidQty, r.BestAskQty,
-			bidsJSON, asksJSON,
+			r.TotalBuyQty, r.TotalSellQty,
+			r.BidPrice1, r.BidQty1, r.BidOrders1,
+			r.AskPrice1, r.AskQty1, r.AskOrders1,
+			r.BidPrice2, r.BidQty2, r.BidOrders2,
+			r.AskPrice2, r.AskQty2, r.AskOrders2,
+			r.BidPrice3, r.BidQty3, r.BidOrders3,
+			r.AskPrice3, r.AskQty3, r.AskOrders3,
+			r.BidPrice4, r.BidQty4, r.BidOrders4,
+			r.AskPrice4, r.AskQty4, r.AskOrders4,
+			r.BidPrice5, r.BidQty5, r.BidOrders5,
+			r.AskPrice5, r.AskQty5, r.AskOrders5,
 		})
 	}
 
-	cols := []string{"timestamp", "isin", "tbq", "tsq", "best_bid", "best_ask", "best_bid_qty", "best_ask_qty", "bids", "asks"}
+	cols := []string{
+		"timestamp", "isin", "total_buy_qty", "total_sell_qty",
+		"bid_price_1", "bid_qty_1", "bid_orders_1",
+		"ask_price_1", "ask_qty_1", "ask_orders_1",
+		"bid_price_2", "bid_qty_2", "bid_orders_2",
+		"ask_price_2", "ask_qty_2", "ask_orders_2",
+		"bid_price_3", "bid_qty_3", "bid_orders_3",
+		"ask_price_3", "ask_qty_3", "ask_orders_3",
+		"bid_price_4", "bid_qty_4", "bid_orders_4",
+		"ask_price_4", "ask_qty_4", "ask_orders_4",
+		"bid_price_5", "bid_qty_5", "bid_orders_5",
+		"ask_price_5", "ask_qty_5", "ask_orders_5",
+	}
 	n, err := w.pool.CopyFrom(
 		ctx,
 		pgx.Identifier{w.depthTable},
