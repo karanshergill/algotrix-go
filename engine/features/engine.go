@@ -192,6 +192,7 @@ func (e *FeatureEngine) Run(ctx context.Context) {
 // ---------------------------------------------------------------------------
 
 func (e *FeatureEngine) handleTick(ev TickEvent) {
+	RecordTick()
 	s := e.stocks[ev.ISIN]
 	if s == nil {
 		return

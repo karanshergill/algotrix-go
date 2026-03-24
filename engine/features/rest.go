@@ -28,6 +28,7 @@ func (r *RESTServer) Start(ctx context.Context) error {
 	mux.HandleFunc("GET /features/sector/{name}", r.handleSector)
 	mux.HandleFunc("GET /features/{isin}", r.handleStock)
 	mux.HandleFunc("GET /features", r.handleAllFeatures)
+	mux.HandleFunc("GET /healthz", r.handleHealthz)
 
 	server := &http.Server{
 		Handler: mux,
@@ -58,6 +59,7 @@ func (r *RESTServer) Handler() http.Handler {
 	mux.HandleFunc("GET /features/sector/{name}", r.handleSector)
 	mux.HandleFunc("GET /features/{isin}", r.handleStock)
 	mux.HandleFunc("GET /features", r.handleAllFeatures)
+	mux.HandleFunc("GET /healthz", r.handleHealthz)
 	return mux
 }
 
