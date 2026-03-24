@@ -109,7 +109,7 @@ export function RecentSignals() {
                 key={sig.id}
                 className='flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/20 transition-colors'
               >
-                <span className='text-[10px] tabular-nums text-muted-foreground shrink-0'>
+                <span className='text-xs tabular-nums font-semibold text-foreground shrink-0'>
                   {format(new Date(sig.triggered_at), 'HH:mm:ss')}
                 </span>
                 <Badge variant='outline' className={`text-[11px] font-medium shrink-0 ${screenerColorClass(sig.screener_name)}`}>

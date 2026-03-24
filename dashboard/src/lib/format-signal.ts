@@ -17,10 +17,10 @@ export function formatSignalType(raw: string): string {
 
 /** Screener badge color classes (outline style matching signal type badges) */
 const SCREENER_COLORS: Record<string, string> = {
-  early_momentum: 'text-amber-500 border-amber-500/30 bg-amber-500/10',
-  'Early Momentum': 'text-amber-500 border-amber-500/30 bg-amber-500/10',
-  sniper: 'text-rose-500 border-rose-500/30 bg-rose-500/10',
-  Sniper: 'text-rose-500 border-rose-500/30 bg-rose-500/10',
+  early_momentum: 'text-sky-500 border-sky-500/30 bg-sky-500/10',
+  'Early Momentum': 'text-sky-500 border-sky-500/30 bg-sky-500/10',
+  sniper: 'text-red-400 border-red-400/40 bg-red-400/15',
+  Sniper: 'text-red-400 border-red-400/40 bg-red-400/15',
   trident: 'text-violet-500 border-violet-500/30 bg-violet-500/10',
   Trident: 'text-violet-500 border-violet-500/30 bg-violet-500/10',
   thin_momentum: 'text-cyan-500 border-cyan-500/30 bg-cyan-500/10',

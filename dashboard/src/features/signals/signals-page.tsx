@@ -168,7 +168,7 @@ export function SignalsPage() {
                       key={sig.id}
                       className='border-b border-border/50 hover:bg-muted/20 transition-colors'
                     >
-                      <td className='px-4 py-2.5 tabular-nums text-xs'>
+                      <td className='px-4 py-2.5 tabular-nums text-xs font-semibold text-foreground'>
                         {format(new Date(sig.triggered_at), 'HH:mm:ss')}
                       </td>
                       <td className='px-4 py-2.5'>
