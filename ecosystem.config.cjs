@@ -28,6 +28,23 @@ module.exports = {
       },
     },
     {
+      name: 'nse-news',
+      script: 'python3',
+      args: '-u collector.py',
+      cwd: '/home/me/nse-news-collector',
+      watch: false,
+      max_memory_restart: '200M',
+      out_file: '/tmp/nse-news-out.log',
+      error_file: '/tmp/nse-news-error.log',
+      env: {
+        DB_HOST: 'localhost',
+        DB_PORT: '5432',
+        DB_NAME: 'atdb',
+        DB_USER: 'me',
+        DB_PASS: 'algotrix',
+      },
+    },
+    {
       name: 'go-feed',
       script: './algotrix',
       args: 'feed',
