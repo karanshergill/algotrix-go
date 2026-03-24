@@ -95,12 +95,24 @@ func StartFeatureEngineWithPool(ctx context.Context, pool *pgxpool.Pool, hub *fe
 // in nse_cm_bhavcopy and registers them on the engine.
 func RegisterStocksFromDB(ctx context.Context, pool *pgxpool.Pool, engine *FeatureEngine) (int, error) {
 	rows, err := pool.Query(ctx,
-		`SELECT s.isin, s.symbol FROM symbols s
-		 WHERE s.status = 'active'
-		 AND s.isin IN (
-		   SELECT DISTINCT isin FROM nse_cm_bhavcopy
-		   WHERE date = (SELECT MAX(date) FROM nse_cm_bhavcopy)
-		 )`)
+		`WITH recent_dates AS (
+		   SELECT DISTINCT date FROM nse_cm_bhavcopy ORDER BY date DESC LIMIT 20
+		 ),
+		 last_day AS (SELECT MAX(date) AS dt FROM recent_dates),
+		 qualified AS (
+		   SELECT b.isin
+		   FROM nse_cm_bhavcopy b
+		   WHERE b.date IN (SELECT date FROM recent_dates)
+		   GROUP BY b.isin
+		   HAVING
+		     MAX(CASE WHEN b.date = (SELECT dt FROM last_day) THEN b.close END) >= 100
+		     AND AVG(b.volume) >= 100000
+		     AND AVG(b.traded_value) >= 100000000
+		     AND COUNT(DISTINCT b.date) >= 20
+		 )
+		 SELECT s.isin, s.symbol FROM symbols s
+		 WHERE s.status = 'active' AND s.series = 'EQ'
+		 AND s.isin IN (SELECT isin FROM qualified)`)
 	if err != nil {
 		return 0, fmt.Errorf("query stocks: %w", err)
 	}
