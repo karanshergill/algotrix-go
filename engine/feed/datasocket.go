@@ -179,10 +179,16 @@ func (f *DataSocketFeed) onMessage(resp fyersgosdk.DataResponse) {
 
 	// Skip non-data messages (subscribe confirmations, etc.)
 	msgType, _ := data["type"].(string)
-	if msgType != "sf" && msgType != "scrips" {
-		return
-	}
 
+	switch msgType {
+	case "sf", "scrips":
+		f.onTickMessage(data)
+	case "dp":
+		f.onDepthMessage(data)
+	}
+}
+
+func (f *DataSocketFeed) onTickMessage(data map[string]interface{}) {
 	symbol, _ := data["symbol"].(string)
 	if symbol == "" {
 		return
@@ -250,6 +256,78 @@ func (f *DataSocketFeed) onMessage(resp fyersgosdk.DataResponse) {
 	if f.onTickCb != nil && ltpOk && volOk {
 		f.onTickCb(symbol, isin, ltp, vol, ts)
 	}
+}
+
+func (f *DataSocketFeed) onDepthMessage(data map[string]interface{}) {
+	symbol, _ := data["symbol"].(string)
+	if symbol == "" {
+		return
+	}
+
+	isin, ok := f.symbolToISIN[symbol]
+	if !ok {
+		return
+	}
+
+	ts := time.Now()
+
+	// Extract 5-level depth from Fyers dp message.
+	// Fields: bid_price1..5, ask_price1..5, bid_size1..5, ask_size1..5, bid_order1..5, ask_order1..5
+	const levels = 5
+	bids := make([]DepthLevel, 0, levels)
+	asks := make([]DepthLevel, 0, levels)
+	for i := 1; i <= levels; i++ {
+		suffix := fmt.Sprintf("%d", i)
+		bp, bpOk := asFloat64(data["bid_price"+suffix])
+		bs, bsOk := asFloat64(data["bid_size"+suffix])
+		bo, _ := asFloat64(data["bid_order"+suffix])
+		if bpOk || bsOk {
+			bids = append(bids, DepthLevel{Price: bp, Qty: bs, Orders: bo})
+		}
+
+		ap, apOk := asFloat64(data["ask_price"+suffix])
+		as, asOk := asFloat64(data["ask_size"+suffix])
+		ao, _ := asFloat64(data["ask_order"+suffix])
+		if apOk || asOk {
+			asks = append(asks, DepthLevel{Price: ap, Qty: as, Orders: ao})
+		}
+	}
+
+	if len(bids) == 0 && len(asks) == 0 {
+		return
+	}
+
+	var bestBid, bestAsk, bestBidQty, bestAskQty float64
+	if len(bids) > 0 {
+		bestBid = bids[0].Price
+		bestBidQty = bids[0].Qty
+	}
+	if len(asks) > 0 {
+		bestAsk = asks[0].Price
+		bestAskQty = asks[0].Qty
+	}
+
+	// Sum all bid/ask quantities for tbq/tsq.
+	var tbq, tsq int64
+	for _, b := range bids {
+		tbq += int64(b.Qty)
+	}
+	for _, a := range asks {
+		tsq += int64(a.Qty)
+	}
+
+	f.writer.WriteDepth(DepthRow{
+		Timestamp:  ts,
+		ISIN:       isin,
+		Tbq:        tbq,
+		Tsq:        tsq,
+		BestBid:    bestBid,
+		BestAsk:    bestAsk,
+		BestBidQty: bestBidQty,
+		BestAskQty: bestAskQty,
+		Bids:       bids,
+		Asks:       asks,
+	})
 }
 
 // Fix 6: No reflection. Exhaustive type matching including SDK's FloatSDK.
