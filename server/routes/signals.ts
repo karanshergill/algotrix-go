@@ -1,15 +1,5 @@
 import { Hono } from 'hono'
-import pg from 'pg'
-
-// Separate pool for algotrix database (signals live here, not in atdb)
-const algotrixPool = new pg.Pool({
-  host: 'localhost',
-  port: 5432,
-  user: 'me',
-  password: 'algotrix',
-  database: 'algotrix',
-  max: 5,
-})
+import pool from '../db'
 
 const signals = new Hono()
 
@@ -43,8 +33,8 @@ signals.get('/', async (c) => {
   }
 
   const where = conditions.join(' AND ')
-  const result = await algotrixPool.query(
-    `SELECT id, session_date, triggered_at, screener_name, security_id,
+  const result = await pool.query(
+    `SELECT id, session_date, triggered_at, screener_name, isin,
             trading_symbol, signal_type, trigger_price, threshold_price,
             ltp, percent_above, metadata, trigger_values
      FROM signals
@@ -60,7 +50,7 @@ signals.get('/', async (c) => {
 signals.get('/summary', async (c) => {
   const date = c.req.query('date') ?? new Date().toISOString().slice(0, 10)
 
-  const result = await algotrixPool.query(
+  const result = await pool.query(
     `SELECT screener_name, COUNT(*)::int AS count
      FROM signals
      WHERE session_date = $1

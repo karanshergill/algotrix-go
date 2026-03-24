@@ -274,10 +274,14 @@ func runFeed() {
 	}
 
 	// --- Screener Engine: wire after feature engine ---
-	algotrixDSN := "postgres://me:algotrix@localhost:5432/algotrix"
+	// Screener uses atdb pool (signals table migrated to atdb)
+	atdbPool, poolErr := pgxpool.New(feCtx, feedCfg.Feed.Storage.PostgresDSN)
+	if poolErr != nil {
+		log.Printf("[Screener] atdb pool failed (non-fatal): %v", poolErr)
+	}
 	// Signal broadcast function — set after recorder is created
 	var broadcastSignal func(map[string]interface{})
-	scrEngine, err := screeners.Setup(feCtx, algotrixDSN)
+	scrEngine, err := screeners.Setup(feCtx, atdbPool)
 	if err != nil {
 		log.Printf("[Screener] setup failed (non-fatal): %v", err)
 	} else {

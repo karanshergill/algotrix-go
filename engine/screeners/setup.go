@@ -2,26 +2,23 @@ package screeners
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Setup creates and returns a fully initialized screener engine.
-// algotrixDSN connects to the algotrix DB (not atdb).
-func Setup(ctx context.Context, algotrixDSN string) (*Engine, error) {
-	// 1. Connect to algotrix DB for signal persistence
-	db, err := NewSignalDB(ctx, algotrixDSN)
-	if err != nil {
-		return nil, fmt.Errorf("signal DB setup: %w", err)
-	}
+// Uses the atdb pool directly — no separate algotrix connection needed.
+func Setup(ctx context.Context, pool *pgxpool.Pool) (*Engine, error) {
+	// 1. Create signal DB using atdb pool
+	db := NewSignalDB(pool)
 
 	// 2. Load breakout thresholds for today
 	ist := time.FixedZone("IST", 5*3600+30*60)
 	today := time.Now().In(ist)
 
-	// Use today's date for session extremes lookup
-	thresholds, err := LoadBreakoutThresholds(ctx, db.pool, today)
+	thresholds, err := LoadBreakoutThresholds(ctx, pool, today)
 	if err != nil {
 		log.Printf("[screener-setup] WARNING: breakout thresholds failed: %v (breakout screener will be dormant)", err)
 		thresholds = make(map[string]float64)
