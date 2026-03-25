@@ -22,19 +22,21 @@ let feedIntent = false
 
 // Auto-detect running go-feed (PM2 cron starts it at 9 AM without dashboard interaction)
 async function autoDetectFeed() {
-  if (feedIntent) return
+  // If already connected, nothing to do.
+  if (feedIntent && hubConnected) return
   try {
     const res = await fetch('http://127.0.0.1:3003/healthz', { signal: AbortSignal.timeout(2000) })
     if (res.ok) {
       console.log('[feed-ws] auto-detected running go-feed, connecting to Hub')
       feedIntent = true
+      // Reset backoff — go-feed is back up
       hubBackoff = RECONNECT_INTERVAL
       connectToHub()
     }
   } catch { /* go-feed not running */ }
 }
 autoDetectFeed()
-setInterval(autoDetectFeed, 30_000)
+setInterval(autoDetectFeed, 10_000)
 
 export function setFeedIntent(intent: boolean) {
   feedIntent = intent
