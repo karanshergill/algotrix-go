@@ -1,3 +1,4 @@
+import { useLivePrices } from "@/hooks/use-live-prices"
 import { useState } from 'react'
 import { format } from 'date-fns'
 import { Zap } from 'lucide-react'
@@ -40,6 +41,8 @@ export function SignalsPage() {
 
   const screeners = summary?.map((s) => s.screener_name) ?? []
   const signalTypes = [...new Set(signals?.map((s) => s.signal_type) ?? [])]
+  const uniqueIsins = [...new Set(signals?.map((s) => s.isin) ?? [])]
+  const livePrices = useLivePrices(uniqueIsins)
   const totalCount = summary?.reduce((a, s) => a + s.count, 0) ?? 0
 
   return (
@@ -181,7 +184,7 @@ export function SignalsPage() {
                       </td>
                       <td className='px-4 py-2.5'>{signalBadge(sig.signal_type)}</td>
                       <td className='px-4 py-2.5 text-right tabular-nums'>
-                        {Number(sig.ltp).toFixed(2)}
+                        {(() => { const live = livePrices.get(sig.isin); const price = live ?? Number(sig.ltp); const trigger = Number(sig.trigger_price); const color = live ? (price >= trigger ? "text-emerald-500" : "text-red-400") : ""; return <span className={color}>{price.toFixed(2)}</span>; })()}
                       </td>
                       <td className='px-4 py-2.5 text-right tabular-nums'>
                         {Number(sig.trigger_price).toFixed(2)}

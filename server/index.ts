@@ -13,6 +13,7 @@ import symbols from './routes/symbols'
 import watchlist from './routes/watchlist'
 import backtest from './routes/backtest'
 import signals from './routes/signals'
+import prices from './routes/prices'
 import news from './routes/news'
 import universe from './routes/universe'
 
@@ -30,6 +31,7 @@ app.route('/api/news', news)
 app.route('/api/ohlcv', ohlcv)
 app.route('/api/sectors', sectors)
 app.route('/api/signals', signals)
+app.route('/api/prices', prices)
 app.route('/api/symbols', symbols)
 app.route('/api/watchlists', watchlist)
 app.route('/api/universe', universe)

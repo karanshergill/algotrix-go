@@ -5,6 +5,7 @@ export type Signal = {
   screener_name: string
   security_id: number
   trading_symbol: string
+  isin: string
   signal_type: string
   trigger_price: number
   threshold_price: number
