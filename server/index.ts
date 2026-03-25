@@ -11,6 +11,7 @@ import symbols from './routes/symbols'
 import watchlist from './routes/watchlist'
 import backtest from './routes/backtest'
 import signals from './routes/signals'
+import news from './routes/news'
 import universe from './routes/universe'
 
 const app = new Hono()
@@ -21,6 +22,7 @@ app.route('/api/backtests', backtest)
 app.route('/api/calendar', calendar)
 app.route('/api/feed', feed)
 app.route('/api/indices', indices)
+app.route('/api/news', news)
 app.route('/api/ohlcv', ohlcv)
 app.route('/api/sectors', sectors)
 app.route('/api/signals', signals)

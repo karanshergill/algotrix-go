@@ -308,6 +308,8 @@ func runFeed() {
 						"ltp":           sig.LTP,
 						"trigger_price": sig.TriggerPrice,
 						"triggered_at":  sig.TriggeredAt.Format("2006-01-02T15:04:05-07:00"),
+						"dedup_key":     fmt.Sprintf("%s:%s:%s", sig.ScreenerName, sig.ISIN, sig.TriggeredAt.Format("2006-01-02")),
+						"percent_above": sig.PercentAbove,
 					})
 				}
 			}
