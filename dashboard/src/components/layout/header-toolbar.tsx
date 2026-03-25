@@ -85,7 +85,14 @@ export function HeaderToolbar() {
       <Tooltip>
         <TooltipTrigger asChild>
           <Button variant='ghost' size='icon' onClick={toggleAlerts} className='relative'>
-            {alertsOn ? <Bell className='h-4 w-4' /> : <BellOff className='h-4 w-4 opacity-50' />}
+            {alertsOn ? (
+              <>
+                <Bell className='h-4 w-4 text-emerald-500 animate-[chime_1.5s_ease-in-out_infinite]' />
+                <span className='absolute top-1 right-1 h-2 w-2 rounded-full bg-emerald-500 animate-pulse' />
+              </>
+            ) : (
+              <BellOff className='h-4 w-4 opacity-50' />
+            )}
           </Button>
         </TooltipTrigger>
         <TooltipContent>{alertsOn ? 'Signal Alerts: ON' : 'Signal Alerts: OFF'}</TooltipContent>
