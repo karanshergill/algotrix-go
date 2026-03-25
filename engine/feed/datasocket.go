@@ -78,6 +78,10 @@ func (f *DataSocketFeed) connect() error {
 		f.socket.CloseConnection()
 		f.socket = nil
 	}
+	if f.depthSocket != nil {
+		f.depthSocket.CloseConnection()
+		f.depthSocket = nil
+	}
 	f.mu.Unlock()
 
 	socket := fyersgosdk.NewFyersDataSocket(
