@@ -114,11 +114,11 @@ func (e *FeatureEngine) RegisterStock(isin, symbol, sectorID string) {
 		ISIN:     isin,
 		Symbol:   symbol,
 		SectorID: sectorID,
-		Volume1m:  NewRollingSum(60*time.Second, 4096),
-		Volume5m:  NewRollingSum(300*time.Second, 16384),
-		BuyVol5m:  NewRollingSum(300*time.Second, 16384),
-		SellVol5m: NewRollingSum(300*time.Second, 16384),
-		Updates1m: NewRollingSum(60*time.Second, 4096),
+		Volume1m:  NewRollingSum(60*time.Second, 8192),
+		Volume5m:  NewRollingSum(300*time.Second, 32768),
+		BuyVol5m:  NewRollingSum(300*time.Second, 32768),
+		SellVol5m: NewRollingSum(300*time.Second, 32768),
+		Updates1m: NewRollingSum(60*time.Second, 8192),
 		High5m:    NewRollingExtreme(300*time.Second, true),
 		Low5m:     NewRollingExtreme(300*time.Second, false),
 	}
@@ -479,20 +479,76 @@ func (e *FeatureEngine) handleTimer() {
 }
 
 // ---------------------------------------------------------------------------
-// ClassifyTick — Section 1.8: tick rule classification.
+// ClassifyTick — Quote Rule classification (v2 parity).
 // ---------------------------------------------------------------------------
 
-// ClassifyTick uses the tick rule to classify volume as buy or sell.
-// price > lastLTP → buy, price < lastLTP → sell, equal → use last direction.
+// ClassifyTick classifies volume as buy or sell using the Quote Rule (v2 parity).
+//
+// When depth is available (BidPrices[0] > 0 && AskPrices[0] > 0):
+//
+//	Quote Rule (matches v2 VolumeDirectionIndicator._classify):
+//	1. ltp >= ask  → BUY  (buyer lifted the ask)
+//	2. ltp <= bid  → SELL (seller hit the bid)
+//	3. ltp > mid   → BUY
+//	4. ltp < mid   → SELL
+//	5. ltp == mid  → use TotalBidQty > TotalAskQty (book pressure tiebreak)
+//
+// When depth is unavailable (no bid/ask yet):
+//
+//	Tick Rule fallback (same as previous behaviour):
+//	price > lastLTP → buy, price < lastLTP → sell, equal → repeat last direction
+//
+// Unclassifiable ticks (direction unknown at start, no depth, no prior direction)
+// are skipped rather than defaulting to buy.
 func (s *StockState) ClassifyTick(price float64, volumeDelta int64, ts time.Time) {
-	if price > s.LastLTP {
-		s.LastDirection = 1
-	} else if price < s.LastLTP {
-		s.LastDirection = -1
-	}
-	// If equal, LastDirection stays unchanged (tick rule)
+	bid := s.BidPrices[0]
+	ask := s.AskPrices[0]
 
-	if s.LastDirection >= 0 {
+	var direction int8 // 0 = unknown, 1 = buy, -1 = sell
+
+	if bid > 0 && ask > 0 {
+		// Quote Rule — depth is available
+		if price >= ask {
+			direction = 1
+		} else if price <= bid {
+			direction = -1
+		} else {
+			mid := (bid + ask) / 2.0
+			if price > mid {
+				direction = 1
+			} else if price < mid {
+				direction = -1
+			} else {
+				// Exactly at midpoint — v2 parity:
+				// buy if total bid qty > total ask qty, else sell.
+				if s.TotalBidQty > s.TotalAskQty {
+					direction = 1
+				} else {
+					direction = -1
+				}
+			}
+		}
+		s.LastDirection = direction
+	} else {
+		// Tick Rule fallback (no depth available yet)
+		if price > s.LastLTP {
+			direction = 1
+			s.LastDirection = 1
+		} else if price < s.LastLTP {
+			direction = -1
+			s.LastDirection = -1
+		} else {
+			direction = s.LastDirection // repeat last known direction
+		}
+	}
+
+	// Skip unclassifiable tick (no depth, no prior direction, no price change)
+	if direction == 0 {
+		s.LastLTP = price
+		return
+	}
+
+	if direction > 0 {
 		s.CumulativeBuyVol += volumeDelta
 		s.BuyVol5m.Add(ts, volumeDelta)
 	} else {
