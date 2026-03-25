@@ -16,6 +16,7 @@ import signals from './routes/signals'
 import prices from './routes/prices'
 import news from './routes/news'
 import universe from './routes/universe'
+import livePrices from './routes/live-prices'
 
 const app = new Hono()
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app })
@@ -35,6 +36,7 @@ app.route('/api/prices', prices)
 app.route('/api/symbols', symbols)
 app.route('/api/watchlists', watchlist)
 app.route('/api/universe', universe)
+app.route('/api/live-prices', livePrices)
 
 app.get('/api/health', (c) => c.json({ status: 'ok' }))
 

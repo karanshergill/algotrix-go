@@ -184,7 +184,7 @@ export function SignalsPage() {
                       </td>
                       <td className='px-4 py-2.5'>{signalBadge(sig.signal_type)}</td>
                       <td className='px-4 py-2.5 text-right tabular-nums'>
-                        {(() => { const live = livePrices.get(sig.isin); const price = live ?? Number(sig.ltp); const trigger = Number(sig.trigger_price); const color = live ? (price >= trigger ? "text-emerald-500" : "text-red-400") : ""; return <span className={color}>{price.toFixed(2)}</span>; })()}
+                        {(() => { const lp = livePrices.get(sig.isin); if (!lp) return <span>{Number(sig.ltp).toFixed(2)}</span>; const color = lp.ltp > lp.prev ? "text-emerald-500" : lp.ltp < lp.prev ? "text-red-400" : "text-muted-foreground"; return <span className={color}>{lp.ltp.toFixed(2)}</span>; })()}
                       </td>
                       <td className='px-4 py-2.5 text-right tabular-nums'>
                         {Number(sig.trigger_price).toFixed(2)}

@@ -1,33 +1,51 @@
 import { useEffect, useRef, useState } from 'react'
 
+export interface LivePrice {
+  ltp: number
+  prev: number  // previous LTP for direction coloring
+}
+
 /**
- * Polls live LTP for given ISINs via /api/prices every 2 seconds.
- * Returns Map<isin, ltp> updated in near real-time.
+ * Listens to /features endpoint for real-time LTP updates.
+ * Returns Map<ISIN, LivePrice> with current and previous LTP.
  */
-export function useLivePrices(isins: string[]): Map<string, number> {
-  const [prices, setPrices] = useState<Map<string, number>>(new Map())
-  const isinKey = isins.slice().sort().join(',')
+export function useLivePrices(isins: string[]): Map<string, LivePrice> {
+  const [prices, setPrices] = useState<Map<string, LivePrice>>(new Map())
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
-    if (!isinKey) return
+    if (isins.length === 0) return
 
-    let active = true
+    const isinSet = new Set(isins)
 
-    const poll = async () => {
+    const fetchPrices = async () => {
       try {
-        const res = await fetch(`/api/prices?isins=${isinKey}`)
-        if (res.ok && active) {
-          const data = await res.json() as Record<string, number>
-          setPrices(new Map(Object.entries(data)))
-        }
+        const res = await fetch('/api/live-prices/all')
+        if (!res.ok) return
+        const data: Record<string, { LTP: number }> = await res.json()
+
+        setPrices(prev => {
+          const next = new Map<string, LivePrice>()
+          for (const [isin, stock] of Object.entries(data)) {
+            if (!isinSet.has(isin)) continue
+            const old = prev.get(isin)
+            next.set(isin, {
+              ltp: stock.LTP,
+              prev: old?.ltp ?? stock.LTP,
+            })
+          }
+          return next
+        })
       } catch {}
     }
 
-    poll() // immediate first fetch
-    const id = setInterval(poll, 2000)
+    fetchPrices()
+    intervalRef.current = setInterval(fetchPrices, 2000)
 
-    return () => { active = false; clearInterval(id) }
-  }, [isinKey])
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+    }
+  }, [isins.join(',')])
 
   return prices
 }
