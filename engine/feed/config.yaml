@@ -18,3 +18,6 @@ feed:
     postgres_dsn: postgres://me:algotrix@localhost:5432/atdb
     depth_table: nse_cm_depth
     ticks_table: nse_cm_ticks
+  hub:
+    enabled: true
+    port: 3002

@@ -103,15 +103,6 @@ func (h *Hub) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	conn.Close()
 	logTS("[Hub] client disconnected (%d remaining)", h.clientCount())
-
-
-
-
-
-
-
-	conn.Close()
-	logTS("[Hub] client disconnected (%d remaining)", h.clientCount())
 }
 
 // Broadcast sends a pre-serialized JSON message to all connected clients.

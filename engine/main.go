@@ -318,11 +318,6 @@ func runFeed() {
 
 	recorder := feed.NewRecorder(configPath, symbolList)
 
-	// Wire signal broadcasting through Hub WebSocket
-	if recorder.Hub() != nil {
-		broadcastSignal = recorder.Hub().BroadcastSignal
-	}
-
 	// Wire tick callback to feature engine
 	if feAdapter != nil {
 		recorder.SetOnTick(func(symbol, isin string, ltp float64, volume int64, ts time.Time) {
@@ -332,6 +327,14 @@ func runFeed() {
 
 	if err := recorder.Start(a.AccessToken()); err != nil {
 		log.Fatal("Feed error: ", err)
+	}
+
+	// Wire signal broadcasting through Hub WebSocket (must be after Start() which creates the Hub)
+	if recorder.Hub() != nil {
+		broadcastSignal = recorder.Hub().BroadcastSignal
+		log.Println("[main] signal broadcasting wired through Hub")
+	} else {
+		log.Println("[main] Hub not available — signals will persist to DB only (no live broadcast)")
 	}
 }
 
