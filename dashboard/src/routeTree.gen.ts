@@ -33,6 +33,7 @@ import { Route as AuthenticatedTasksIndexRouteImport } from './routes/_authentic
 import { Route as AuthenticatedSignalsIndexRouteImport } from './routes/_authenticated/signals/index'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
 import { Route as AuthenticatedOhlcvIndexRouteImport } from './routes/_authenticated/ohlcv/index'
+import { Route as AuthenticatedNewsIndexRouteImport } from './routes/_authenticated/news/index'
 import { Route as AuthenticatedLiveFeedIndexRouteImport } from './routes/_authenticated/live-feed/index'
 import { Route as AuthenticatedIndustryAndSectorPulseIndexRouteImport } from './routes/_authenticated/industry-and-sector-pulse/index'
 import { Route as AuthenticatedHelpCenterIndexRouteImport } from './routes/_authenticated/help-center/index'
@@ -172,6 +173,11 @@ const AuthenticatedOhlcvIndexRoute = AuthenticatedOhlcvIndexRouteImport.update({
   path: '/ohlcv/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedNewsIndexRoute = AuthenticatedNewsIndexRouteImport.update({
+  id: '/news/',
+  path: '/news/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedLiveFeedIndexRoute =
   AuthenticatedLiveFeedIndexRouteImport.update({
     id: '/live-feed/',
@@ -288,6 +294,7 @@ export interface FileRoutesByFullPath {
   '/help-center': typeof AuthenticatedHelpCenterIndexRoute
   '/industry-and-sector-pulse': typeof AuthenticatedIndustryAndSectorPulseIndexRoute
   '/live-feed': typeof AuthenticatedLiveFeedIndexRoute
+  '/news': typeof AuthenticatedNewsIndexRoute
   '/ohlcv': typeof AuthenticatedOhlcvIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
   '/signals': typeof AuthenticatedSignalsIndexRoute
@@ -325,6 +332,7 @@ export interface FileRoutesByTo {
   '/help-center': typeof AuthenticatedHelpCenterIndexRoute
   '/industry-and-sector-pulse': typeof AuthenticatedIndustryAndSectorPulseIndexRoute
   '/live-feed': typeof AuthenticatedLiveFeedIndexRoute
+  '/news': typeof AuthenticatedNewsIndexRoute
   '/ohlcv': typeof AuthenticatedOhlcvIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/signals': typeof AuthenticatedSignalsIndexRoute
@@ -367,6 +375,7 @@ export interface FileRoutesById {
   '/_authenticated/help-center/': typeof AuthenticatedHelpCenterIndexRoute
   '/_authenticated/industry-and-sector-pulse/': typeof AuthenticatedIndustryAndSectorPulseIndexRoute
   '/_authenticated/live-feed/': typeof AuthenticatedLiveFeedIndexRoute
+  '/_authenticated/news/': typeof AuthenticatedNewsIndexRoute
   '/_authenticated/ohlcv/': typeof AuthenticatedOhlcvIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/_authenticated/signals/': typeof AuthenticatedSignalsIndexRoute
@@ -407,6 +416,7 @@ export interface FileRouteTypes {
     | '/help-center'
     | '/industry-and-sector-pulse'
     | '/live-feed'
+    | '/news'
     | '/ohlcv'
     | '/settings/'
     | '/signals'
@@ -444,6 +454,7 @@ export interface FileRouteTypes {
     | '/help-center'
     | '/industry-and-sector-pulse'
     | '/live-feed'
+    | '/news'
     | '/ohlcv'
     | '/settings'
     | '/signals'
@@ -485,6 +496,7 @@ export interface FileRouteTypes {
     | '/_authenticated/help-center/'
     | '/_authenticated/industry-and-sector-pulse/'
     | '/_authenticated/live-feed/'
+    | '/_authenticated/news/'
     | '/_authenticated/ohlcv/'
     | '/_authenticated/settings/'
     | '/_authenticated/signals/'
@@ -680,6 +692,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedOhlcvIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/news/': {
+      id: '/_authenticated/news/'
+      path: '/news'
+      fullPath: '/news'
+      preLoaderRoute: typeof AuthenticatedNewsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/live-feed/': {
       id: '/_authenticated/live-feed/'
       path: '/live-feed'
@@ -822,6 +841,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedHelpCenterIndexRoute: typeof AuthenticatedHelpCenterIndexRoute
   AuthenticatedIndustryAndSectorPulseIndexRoute: typeof AuthenticatedIndustryAndSectorPulseIndexRoute
   AuthenticatedLiveFeedIndexRoute: typeof AuthenticatedLiveFeedIndexRoute
+  AuthenticatedNewsIndexRoute: typeof AuthenticatedNewsIndexRoute
   AuthenticatedOhlcvIndexRoute: typeof AuthenticatedOhlcvIndexRoute
   AuthenticatedSignalsIndexRoute: typeof AuthenticatedSignalsIndexRoute
   AuthenticatedTasksIndexRoute: typeof AuthenticatedTasksIndexRoute
@@ -843,6 +863,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedIndustryAndSectorPulseIndexRoute:
     AuthenticatedIndustryAndSectorPulseIndexRoute,
   AuthenticatedLiveFeedIndexRoute: AuthenticatedLiveFeedIndexRoute,
+  AuthenticatedNewsIndexRoute: AuthenticatedNewsIndexRoute,
   AuthenticatedOhlcvIndexRoute: AuthenticatedOhlcvIndexRoute,
   AuthenticatedSignalsIndexRoute: AuthenticatedSignalsIndexRoute,
   AuthenticatedTasksIndexRoute: AuthenticatedTasksIndexRoute,

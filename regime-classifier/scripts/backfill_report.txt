@@ -1,56 +1,54 @@
 ======================================================================
 BACKFILL VALIDATION REPORT
-Generated: 2026-03-22T18:56:33.951548
+Generated: 2026-03-25T02:46:10.878767
 ======================================================================
 
-Dates attempted:  1
-Dates succeeded:  1
+Dates attempted:  2
+Dates succeeded:  2
 Dates failed:     0
 Dates holiday:    0
 
 --- CM ---
-  Total parsed:   2432
-  Total inserted: 432
+  Total parsed:   0
+  Total inserted: 0
   Holidays:       0
   Errors:         0
   Monthly breakdown:
-    2026-03: parsed=2432, inserted=432
 
 --- IDX ---
-  Total parsed:   147
-  Total inserted: 147
+  Total parsed:   294
+  Total inserted: 294
   Holidays:       0
   Errors:         0
   Monthly breakdown:
-    2026-03: parsed=147, inserted=147
+    2026-03: parsed=294, inserted=294
 
 --- FO ---
-  Total parsed:   50760
-  Total inserted: 25260
+  Total parsed:   0
+  Total inserted: 0
   Holidays:       0
   Errors:         0
   Monthly breakdown:
-    2026-03: parsed=50760, inserted=25260
 
-nse_cm_bhavcopy: 2,772,422 total rows
+nse_cm_bhavcopy: 2,774,861 total rows
   2020: 376,705
   2021: 389,770
   2022: 438,894
   2023: 445,186
   2024: 461,929
   2025: 529,758
-  2026: 130,180
-  Date range: 2020-01-01 to 2026-03-20
+  2026: 132,619
+  Date range: 2020-01-01 to 2026-03-23
 
-nse_indices_daily: 164,582 total rows
+nse_indices_daily: 164,876 total rows
   2020: 20,683
   2021: 22,013
   2022: 24,752
   2023: 26,041
   2024: 28,752
   2025: 34,514
-  2026: 7,827
-  Date range: 2020-01-01 to 2026-03-20
+  2026: 8,121
+  Date range: 2020-01-01 to 2026-03-24
 
 nse_fo_bhavcopy: 72,425,132 total rows
   2020: 9,086,706

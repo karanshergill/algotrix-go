@@ -79,7 +79,7 @@ func (r *Recorder) Start(token string) error {
 	logTS("[Recorder] starting with %d symbols", len(r.symbols))
 
 	// Start internal WebSocket hub for live tick/depth broadcast.
-	if cfg.Feed.Hub.Enabled {
+	if cfg.Feed.Hub.Enabled && r.hub == nil {
 		r.hub = NewHub(cfg.Feed.Hub.Port)
 		if err := r.hub.Start(); err != nil {
 			return fmt.Errorf("start hub: %w", err)
@@ -139,6 +139,23 @@ func (r *Recorder) SetOnDepth(cb DepthCallback) {
 }
 
 // Hub returns the internal hub (nil if hub disabled).
+// InitHub creates and starts the Hub before Start() so broadcastSignal
+// is available before ticks flow. Prevents dedup-before-broadcast bug.
+func (r *Recorder) InitHub(configPath string) error {
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		return fmt.Errorf("load feed config for hub: %w", err)
+	}
+	if cfg.Feed.Hub.Enabled && r.hub == nil {
+		r.hub = NewHub(cfg.Feed.Hub.Port)
+		if err := r.hub.Start(); err != nil {
+			return fmt.Errorf("start hub: %w", err)
+		}
+		logTS("[Recorder] Hub pre-initialized on port %d", cfg.Feed.Hub.Port)
+	}
+	return nil
+}
+
 func (r *Recorder) Hub() *Hub { return r.hub }
 
 // Pool returns the DB connection pool (nil before Start).

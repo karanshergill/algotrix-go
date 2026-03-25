@@ -8946,3 +8946,30 @@
 2026-03-22 18:56:33 [INFO] ======================================================================
 2026-03-22 18:56:40 [INFO] Validation report written to /home/me/projects/algotrix-go/regime-classifier/scripts/backfill_report.txt
 2026-03-22 18:56:40 [INFO] Done.
+2026-03-25 02:46:06 [INFO] ======================================================================
+2026-03-25 02:46:06 [INFO] NSE HISTORICAL BACKFILL
+2026-03-25 02:46:06 [INFO] Date range: 2026-03-23 to 2026-03-24
+2026-03-25 02:46:06 [INFO] Feeds: idx
+2026-03-25 02:46:06 [INFO] Format switch date: 2024-01-01
+2026-03-25 02:46:06 [INFO] ======================================================================
+2026-03-25 02:46:06 [INFO] Connected to database
+2026-03-25 02:46:06 [INFO] Total weekday dates in range: 2
+2026-03-25 02:46:06 [INFO] Progress: 1/2 dates (2026-03-23) | Rate: 174762.7 dates/s | ETA: 0.0h
+2026-03-25 02:46:06 [DEBUG] HTTP 200 https://nsearchives.nseindia.com/content/indices/ind_close_all_23032026.csv (16070 bytes)
+2026-03-25 02:46:06 [INFO] IDX 2026-03-23: parsed=147, inserted=147, skipped=0, time=0.2s
+2026-03-25 02:46:08 [DEBUG] HTTP 200 https://nsearchives.nseindia.com/content/indices/ind_close_all_24032026.csv (15802 bytes)
+2026-03-25 02:46:08 [INFO] IDX 2026-03-24: parsed=147, inserted=147, skipped=0, time=0.0s
+2026-03-25 02:46:10 [INFO] 
+======================================================================
+2026-03-25 02:46:10 [INFO] BACKFILL COMPLETE
+2026-03-25 02:46:10 [INFO] Total time: 0.0 hours (4s)
+2026-03-25 02:46:10 [INFO] Dates: 2 attempted, 2 succeeded, 0 failed, 0 holidays
+2026-03-25 02:46:10 [INFO]   IDX: parsed=294, inserted=294, holidays=0, errors=0
+2026-03-25 02:46:10 [INFO] ======================================================================
+2026-03-25 02:46:26 [INFO] Validation report written to /home/me/projects/algotrix-go/regime-classifier/scripts/backfill_report.txt
+2026-03-25 02:46:26 [INFO] Done.
+2026-03-25 02:46:35 [DEBUG] HTTP 404 https://nsearchives.nseindia.com/content/indices/ind_close_all_21032026.csv (3531 bytes)
+2026-03-25 02:46:35 [DEBUG] HTTP 404 https://nsearchives.nseindia.com/content/indices/ind_close_all_22032026.csv (3531 bytes)
+2026-03-25 02:46:35 [DEBUG] HTTP 200 https://nsearchives.nseindia.com/content/indices/ind_close_all_23032026.csv (16070 bytes)
+2026-03-25 02:46:35 [DEBUG] HTTP 200 https://nsearchives.nseindia.com/content/indices/ind_close_all_24032026.csv (15802 bytes)
+2026-03-25 02:46:49 [DEBUG] HTTP 200 https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_20260324_F_0000.csv.zip (190009 bytes)

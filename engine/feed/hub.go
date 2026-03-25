@@ -2,6 +2,7 @@ package feed
 
 import (
 	"encoding/json"
+	"log"
 	"fmt"
 	"net"
 	"net/http"
@@ -210,6 +211,7 @@ func (h *Hub) Stop() {
 
 // BroadcastSignal serializes a screener signal and broadcasts it.
 func (h *Hub) BroadcastSignal(signal map[string]interface{}) {
+	log.Printf("[Hub] broadcasting signal: %v %v", signal["screener"], signal["symbol"])
 	msg := map[string]interface{}{
 		"type":   "signal",
 		"signal": signal,

@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"math"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -281,6 +282,7 @@ func runFeed() {
 	}
 	// Signal broadcast function — set after recorder is created
 	var broadcastSignal func(map[string]interface{})
+	var broadcastMu sync.Mutex
 	scrEngine, err := screeners.Setup(feCtx, atdbPool)
 	if err != nil {
 		log.Printf("[Screener] setup failed (non-fatal): %v", err)
@@ -298,9 +300,14 @@ func runFeed() {
 				return
 			}
 			signals := scrEngine.ProcessTick(isin, &stockSnap, &snap.Market)
-			if broadcastSignal != nil {
+			if len(signals) > 0 {
+			}
+			broadcastMu.Lock()
+			cb := broadcastSignal
+			broadcastMu.Unlock()
+			if cb != nil {
 				for _, sig := range signals {
-					broadcastSignal(map[string]interface{}{
+					cb(map[string]interface{}{
 						"screener":      sig.ScreenerName,
 						"signal_type":   string(sig.SignalType),
 						"symbol":        sig.Symbol,
@@ -317,6 +324,18 @@ func runFeed() {
 	}
 
 	recorder := feed.NewRecorder(configPath, symbolList)
+
+	// Pre-initialize Hub so broadcastSignal is available before ticks flow.
+	// Fixes: signals firing during startup get deduped before Hub is wired.
+	if err := recorder.InitHub(configPath); err != nil {
+		log.Printf("[main] Hub pre-init failed (non-fatal): %v", err)
+	}
+	if recorder.Hub() != nil {
+		broadcastMu.Lock()
+		broadcastSignal = recorder.Hub().BroadcastSignal
+		broadcastMu.Unlock()
+		log.Println("[main] signal broadcasting wired through Hub (pre-start)")
+	}
 
 	// Wire tick callback to feature engine
 	if feAdapter != nil {
@@ -338,14 +357,6 @@ func runFeed() {
 
 	if err := recorder.Start(a.AccessToken()); err != nil {
 		log.Fatal("Feed error: ", err)
-	}
-
-	// Wire signal broadcasting through Hub WebSocket (must be after Start() which creates the Hub)
-	if recorder.Hub() != nil {
-		broadcastSignal = recorder.Hub().BroadcastSignal
-		log.Println("[main] signal broadcasting wired through Hub")
-	} else {
-		log.Println("[main] Hub not available — signals will persist to DB only (no live broadcast)")
 	}
 }
 
