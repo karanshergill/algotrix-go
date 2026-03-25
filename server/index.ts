@@ -1,9 +1,11 @@
 import { serve } from '@hono/node-server'
+import { createNodeWebSocket } from '@hono/node-ws'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import auth from './routes/auth'
 import calendar from './routes/calendar'
 import feed from './routes/feed'
+import { createFeedWsRoute } from './routes/feed-ws'
 import indices from './routes/indices'
 import ohlcv from './routes/ohlcv'
 import sectors from './routes/sectors'
@@ -15,12 +17,14 @@ import news from './routes/news'
 import universe from './routes/universe'
 
 const app = new Hono()
+const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app })
 
 app.use('/api/*', cors({ origin: '*' }))
 app.route('/api/auth', auth)
 app.route('/api/backtests', backtest)
 app.route('/api/calendar', calendar)
 app.route('/api/feed', feed)
+app.route('/api/feed', createFeedWsRoute(upgradeWebSocket))
 app.route('/api/indices', indices)
 app.route('/api/news', news)
 app.route('/api/ohlcv', ohlcv)
@@ -35,4 +39,5 @@ app.get('/api/health', (c) => c.json({ status: 'ok' }))
 
 const port = 3001
 console.log(`API server running on http://localhost:${port}`)
-serve({ fetch: app.fetch, port })
+const server = serve({ fetch: app.fetch, port })
+injectWebSocket(server)
