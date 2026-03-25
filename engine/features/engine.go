@@ -69,6 +69,9 @@ type FeatureEngine struct {
 
 	latestSnapshot atomic.Pointer[EngineSnapshot]
 
+	// dirtyISINs and dirtyFeatures are ONLY written from Run() goroutine.
+	// Both tick and depth events arrive via tickCh/depthCh channels and are
+	// processed sequentially in the select loop — no mutex needed.
 	dirtyISINs     map[string]bool
 	dirtyFeatures  map[string]map[string]float64
 	snapshotTicker *time.Ticker
