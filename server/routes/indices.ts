@@ -2,12 +2,20 @@ import { Hono } from 'hono'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import pool from '../db'
-import { state as feedState } from './feed'
 
 const router = new Hono()
 
 const TOKEN_PATH = path.resolve(process.cwd(), 'engine/token.json')
+const HEALTHZ_URL = 'http://127.0.0.1:3003/healthz'
 
+async function isFeedConnected(): Promise<boolean> {
+  try {
+    const res = await fetch(HEALTHZ_URL, { signal: AbortSignal.timeout(1500) })
+    return res.ok
+  } catch {
+    return false
+  }
+}
 // In-memory cache of last known quotes — returned when market is closed and feed is off
 const quoteCache = new Map<string, {
   symbol: string; ltp: number; ch: number; chp: number
@@ -53,7 +61,7 @@ router.get('/quotes', async (c) => {
   const symbols = symbolsParam.split(',').map((s) => s.trim()).filter(Boolean)
 
   // --- Source: live DB (feed connected) ---
-  if (feedState.status === 'connected') {
+  if (await isFeedConnected()) {
     const result = await pool.query<{
       symbol: string; ltp: number; change: number; change_pct: number
       open: number; high: number; low: number; prev_close: number
@@ -83,7 +91,7 @@ router.get('/quotes', async (c) => {
   }
 
   // --- Source: Fyers REST (market open, or feed DB empty) ---
-  if (isMarketOpen() || feedState.status === 'connected') {
+  if (isMarketOpen() || await isFeedConnected()) {
     let accessToken: string
     try {
       const raw = await readFile(TOKEN_PATH, 'utf-8')
