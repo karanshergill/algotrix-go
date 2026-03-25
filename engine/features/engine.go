@@ -398,23 +398,10 @@ func (e *FeatureEngine) Snapshot() *EngineSnapshot {
 // The actual snapshot rebuild happens on the 250ms timer in rebuildSnapshot.
 func (e *FeatureEngine) updateSnapshotWithFeatures(s *StockState, features map[string]float64) {
 	e.dirtyISINs[s.ISIN] = true
-	// Merge new features into existing dirty features (don't overwrite —
-	// tick-triggered and depth-triggered features must coexist in the snapshot).
+	// Store only the delta (newly computed features). No cloning of previous snapshot.
+	// rebuildSnapshot merges deltas with the previous snapshot's features.
 	existing, ok := e.dirtyFeatures[s.ISIN]
 	if !ok || existing == nil {
-		// First update this cycle — start fresh but copy from last snapshot
-		snap := e.latestSnapshot.Load()
-		if prev, exists := snap.Stocks[s.ISIN]; exists && prev.Features != nil {
-			merged := make(map[string]float64, len(prev.Features)+len(features))
-			for k, v := range prev.Features {
-				merged[k] = v
-			}
-			for k, v := range features {
-				merged[k] = v
-			}
-			e.dirtyFeatures[s.ISIN] = merged
-			return
-		}
 		e.dirtyFeatures[s.ISIN] = features
 		return
 	}
@@ -444,12 +431,25 @@ func (e *FeatureEngine) rebuildSnapshot() {
 		if s == nil {
 			continue
 		}
-		features := e.dirtyFeatures[isin]
+		// Merge deltas with previous snapshot features
+		delta := e.dirtyFeatures[isin]
+		var merged map[string]float64
+		if prev, exists := snap.Stocks[isin]; exists && prev.Features != nil {
+			merged = make(map[string]float64, len(prev.Features)+len(delta))
+			for k, v := range prev.Features {
+				merged[k] = v
+			}
+			for k, v := range delta {
+				merged[k] = v
+			}
+		} else {
+			merged = delta
+		}
 		newStocks[isin] = StockSnapshot{
 			ISIN:     s.ISIN,
 			Symbol:   s.Symbol,
 			LTP:      s.LTP,
-			Features: features,
+			Features: merged,
 			Quality:  ComputeQuality(s, time.Now()),
 		}
 	}
