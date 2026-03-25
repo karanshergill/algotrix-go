@@ -87,8 +87,12 @@ export function HeaderToolbar() {
           <Button variant='ghost' size='icon' onClick={toggleAlerts} className='relative'>
             {alertsOn ? (
               <>
-                <Bell className='h-4 w-4 text-emerald-500 animate-[chime_1.5s_ease-in-out_infinite]' />
-                <span className='absolute top-1 right-1 h-2 w-2 rounded-full bg-emerald-500 animate-pulse' />
+                <Bell className='h-4 w-4 text-emerald-500' />
+                {/* Subtle sound-emit ripple rings */}
+                <span className='absolute inset-0 flex items-center justify-center pointer-events-none'>
+                  <span className='absolute h-6 w-6 rounded-full border border-emerald-500/30 animate-[ripple_2.5s_ease-out_infinite]' />
+                  <span className='absolute h-6 w-6 rounded-full border border-emerald-500/20 animate-[ripple_2.5s_ease-out_infinite_0.8s]' />
+                </span>
               </>
             ) : (
               <BellOff className='h-4 w-4 opacity-50' />
