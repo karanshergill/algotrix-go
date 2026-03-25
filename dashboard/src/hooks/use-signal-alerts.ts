@@ -85,6 +85,9 @@ export function useSignalAlerts(enabled: boolean) {
       // Mark as seen.
       seenKeys.current.add(dedupKey)
 
+      // Notify table to refetch immediately.
+      window.dispatchEvent(new Event('algotrix-signal-received'))
+
       // Claim across tabs.
       bc.postMessage({ type: 'claim', dedupKey })
 

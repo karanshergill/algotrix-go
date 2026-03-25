@@ -7,7 +7,8 @@ import { isMarketOpen, getISTDate } from '@/lib/market-hours'
 import { formatScreenerName, formatSignalType, screenerColorClass } from '@/lib/format-signal'
 import { useSignalSummary } from '@/features/signals/use-signals'
 import type { Signal, SignalSummary } from '@/features/signals/types'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 const SIGNAL_COLORS: Record<string, string> = {
   buy: 'text-emerald-500 border-emerald-500/30 bg-emerald-500/10',
@@ -27,6 +28,13 @@ export function RecentSignals() {
   const [activeScreener, setActiveScreener] = useState<string | null>(null)
 
   const { data: summary } = useSignalSummary(today)
+  const qc = useQueryClient()
+  useEffect(() => {
+    const handler = () => { qc.invalidateQueries({ queryKey: ['recent-signals'] }) }
+    window.addEventListener('algotrix-signal-received', handler)
+    return () => window.removeEventListener('algotrix-signal-received', handler)
+  }, [qc])
+
   const { data: signals, isLoading } = useQuery({
     queryKey: ['recent-signals', today],
     queryFn: () => fetchRecentSignals(today),

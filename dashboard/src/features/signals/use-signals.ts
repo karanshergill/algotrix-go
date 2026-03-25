@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import { useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Signal, SignalSummary } from './types'
 
 function isMarketHours(): boolean {
@@ -25,7 +26,21 @@ async function fetchSummary(date: string): Promise<SignalSummary[]> {
   return res.json()
 }
 
+/** Invalidate signal queries when a real-time WS signal arrives. */
+function useSignalInvalidation() {
+  const qc = useQueryClient()
+  useEffect(() => {
+    const handler = () => {
+      qc.invalidateQueries({ queryKey: ['signals'] })
+      qc.invalidateQueries({ queryKey: ['signals-summary'] })
+    }
+    window.addEventListener('algotrix-signal-received', handler)
+    return () => window.removeEventListener('algotrix-signal-received', handler)
+  }, [qc])
+}
+
 export function useSignals(date: string, screener?: string, type?: string) {
+  useSignalInvalidation()
   return useQuery({
     queryKey: ['signals', date, screener, type],
     queryFn: () => fetchSignals(date, screener, type),
