@@ -323,6 +323,17 @@ func runFeed() {
 		recorder.SetOnTick(func(symbol, isin string, ltp float64, volume int64, ts time.Time) {
 			feAdapter.AdaptTick(symbol, isin, ltp, volume, ts)
 		})
+
+		// Wire depth callback to feature engine — enables book_imbalance feature
+		recorder.SetOnDepth(func(isin string, bids, asks [5]struct{ Price float64; Qty int64 }, ts time.Time) {
+			depthBids := make([]features.DepthLevel, 5)
+			depthAsks := make([]features.DepthLevel, 5)
+			for i := 0; i < 5; i++ {
+				depthBids[i] = features.DepthLevel{Price: bids[i].Price, Qty: int(bids[i].Qty)}
+				depthAsks[i] = features.DepthLevel{Price: asks[i].Price, Qty: int(asks[i].Qty)}
+			}
+			feAdapter.AdaptDepth(isin, depthBids, depthAsks, ts)
+		})
 	}
 
 	if err := recorder.Start(a.AccessToken()); err != nil {

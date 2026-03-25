@@ -18,7 +18,8 @@ type Recorder struct {
 	hub        *Hub
 	tbt        *TBTFeed
 	datasocket *DataSocketFeed
-	onTickCb   TickCallback
+	onTickCb    TickCallback
+	onDepthCb   DepthCallback
 }
 
 func NewRecorder(configPath string, symbols []string) *Recorder {
@@ -103,6 +104,9 @@ func (r *Recorder) Start(token string) error {
 		if r.onTickCb != nil {
 			r.datasocket.SetOnTick(r.onTickCb)
 		}
+		if r.onDepthCb != nil {
+			r.datasocket.SetOnDepth(r.onDepthCb)
+		}
 		if err := r.datasocket.Start(); err != nil {
 			return fmt.Errorf("start DataSocket feed: %w", err)
 		}
@@ -126,6 +130,12 @@ func (r *Recorder) Start(token string) error {
 // Must be called before Start().
 func (r *Recorder) SetOnTick(cb TickCallback) {
 	r.onTickCb = cb
+}
+
+// SetOnDepth registers a callback on the DataSocket feed for every valid depth update.
+// Must be called before Start().
+func (r *Recorder) SetOnDepth(cb DepthCallback) {
+	r.onDepthCb = cb
 }
 
 // Hub returns the internal hub (nil if hub disabled).

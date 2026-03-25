@@ -13,6 +13,9 @@ import (
 // TickCallback is called for every valid tick with ISIN-resolved data.
 type TickCallback func(symbol, isin string, ltp float64, volume int64, ts time.Time)
 
+// DepthCallback is called for every valid depth update with ISIN-resolved data.
+type DepthCallback func(isin string, bids, asks [5]struct{ Price float64; Qty int64 }, ts time.Time)
+
 type DataSocketFeed struct {
 	config       *Config
 	token        string
@@ -22,7 +25,8 @@ type DataSocketFeed struct {
 	writer       *PGWriter
 	hub          *Hub
 	symbolToISIN map[string]string
-	onTickCb     TickCallback // optional: called for every valid tick
+	onTickCb     TickCallback  // optional: called for every valid tick
+	onDepthCb    DepthCallback // optional: called for every valid depth update
 
 	firstData    map[string]bool
 	mu           sync.Mutex
@@ -33,6 +37,9 @@ type DataSocketFeed struct {
 
 // SetOnTick registers a callback invoked for every valid tick.
 func (f *DataSocketFeed) SetOnTick(cb TickCallback) { f.onTickCb = cb }
+
+// SetOnDepth registers a callback invoked for every valid depth update.
+func (f *DataSocketFeed) SetOnDepth(cb DepthCallback) { f.onDepthCb = cb }
 
 func NewDataSocketFeed(config *Config, token string, symbols []string, pool *pgxpool.Pool, symbolToISIN map[string]string, hub *Hub) *DataSocketFeed {
 	return &DataSocketFeed{
@@ -113,7 +120,11 @@ func (f *DataSocketFeed) connect() error {
 	f.mu.Unlock()
 
 	socket.Subscribe(f.symbols, "SymbolUpdate")
-	logTS("[DataSocket] subscribed %d symbols", len(f.symbols))
+	logTS("[DataSocket] subscribed %d symbols for ticks", len(f.symbols))
+
+	// Subscribe depth for all symbols — Fyers DataSocket handles 5-level depth alongside ticks.
+	socket.Subscribe(f.symbols, "DepthUpdate")
+	logTS("[DataSocket] subscribed %d symbols for depth", len(f.symbols))
 
 	return nil
 }
@@ -336,6 +347,18 @@ func (f *DataSocketFeed) onDepthMessage(data map[string]interface{}) {
 	}
 
 	f.writer.WriteDepth(row)
+
+	// Feature engine depth callback
+	if f.onDepthCb != nil && hasAny {
+		var bids, asks [5]struct{ Price float64; Qty int64 }
+		for i := 0; i < 5; i++ {
+			bids[i].Price = float64(*bidPrices[i])
+			bids[i].Qty = int64(*bidQtys[i])
+			asks[i].Price = float64(*askPrices[i])
+			asks[i].Qty = int64(*askQtys[i])
+		}
+		f.onDepthCb(isin, bids, asks, ts)
+	}
 }
 
 // Fix 6: No reflection. Exhaustive type matching including SDK's FloatSDK.
