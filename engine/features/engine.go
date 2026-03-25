@@ -395,7 +395,30 @@ func (e *FeatureEngine) Snapshot() *EngineSnapshot {
 // The actual snapshot rebuild happens on the 250ms timer in rebuildSnapshot.
 func (e *FeatureEngine) updateSnapshotWithFeatures(s *StockState, features map[string]float64) {
 	e.dirtyISINs[s.ISIN] = true
-	e.dirtyFeatures[s.ISIN] = features
+	// Merge new features into existing dirty features (don't overwrite —
+	// tick-triggered and depth-triggered features must coexist in the snapshot).
+	existing, ok := e.dirtyFeatures[s.ISIN]
+	if !ok || existing == nil {
+		// First update this cycle — start fresh but copy from last snapshot
+		snap := e.latestSnapshot.Load()
+		if prev, exists := snap.Stocks[s.ISIN]; exists && prev.Features != nil {
+			merged := make(map[string]float64, len(prev.Features)+len(features))
+			for k, v := range prev.Features {
+				merged[k] = v
+			}
+			for k, v := range features {
+				merged[k] = v
+			}
+			e.dirtyFeatures[s.ISIN] = merged
+			return
+		}
+		e.dirtyFeatures[s.ISIN] = features
+		return
+	}
+	// Already have dirty features this cycle — merge in new ones
+	for k, v := range features {
+		existing[k] = v
+	}
 }
 
 // rebuildSnapshot builds a new EngineSnapshot from all dirty stocks.

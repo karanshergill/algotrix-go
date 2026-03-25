@@ -20,7 +20,8 @@ type DataSocketFeed struct {
 	config       *Config
 	token        string
 	symbols      []string
-	socket       *fyersgosdk.FyersDataSocket
+	socket       *fyersgosdk.FyersDataSocket // tick connection (SymbolUpdate)
+	depthSocket  *fyersgosdk.FyersDataSocket // depth connection (DepthUpdate) — separate to avoid topic cap
 	pool         *pgxpool.Pool
 	writer       *PGWriter
 	hub          *Hub
@@ -122,9 +123,44 @@ func (f *DataSocketFeed) connect() error {
 	socket.Subscribe(f.symbols, "SymbolUpdate")
 	logTS("[DataSocket] subscribed %d symbols for ticks", len(f.symbols))
 
-	// Subscribe depth for all symbols — Fyers DataSocket handles 5-level depth alongside ticks.
-	socket.Subscribe(f.symbols, "DepthUpdate")
-	logTS("[DataSocket] subscribed %d symbols for depth", len(f.symbols))
+	// --- Separate depth connection to avoid per-connection topic cap ---
+	// Fyers caps ~1350 total topics per WebSocket. With 864 sf| + 864 dp| = 1728,
+	// depth gets partially dropped. Solution: dedicated depth socket.
+	depthSocket := fyersgosdk.NewFyersDataSocket(
+		f.token,
+		cfg.DataSocket.LogPath,
+		false, // liteMode
+		false, // writeToFile
+		cfg.DataSocket.Reconnect,
+		cfg.DataSocket.MaxReconnectAttempts,
+		func() {
+			logTS("[DataSocket:Depth] connected")
+		},
+		func(data fyersgosdk.DataClose) {
+			logTS("[DataSocket:Depth] connection closed: %v", data)
+		},
+		func(data fyersgosdk.DataError) {
+			logTS("[DataSocket:Depth] error: %v", data)
+		},
+		f.onDepthOnlyMessage, // depth-only message handler
+	)
+
+	if depthSocket == nil {
+		logTS("[DataSocket:Depth] failed to create depth socket, depth will be partial")
+		return nil
+	}
+
+	if err := depthSocket.Connect(); err != nil {
+		logTS("[DataSocket:Depth] connect failed: %v, depth will be partial", err)
+		return nil
+	}
+
+	f.mu.Lock()
+	f.depthSocket = depthSocket
+	f.mu.Unlock()
+
+	depthSocket.Subscribe(f.symbols, "DepthUpdate")
+	logTS("[DataSocket:Depth] subscribed %d symbols for depth on dedicated connection", len(f.symbols))
 
 	return nil
 }
@@ -179,10 +215,23 @@ func (f *DataSocketFeed) Stop() {
 			f.socket.CloseConnection()
 			logTS("[DataSocket] disconnected")
 		}
+		if f.depthSocket != nil {
+			f.depthSocket.CloseConnection()
+			logTS("[DataSocket:Depth] disconnected")
+		}
 		if f.writer != nil {
 			f.writer.Close()
 		}
 	})
+}
+
+// onDepthOnlyMessage handles messages from the dedicated depth socket.
+func (f *DataSocketFeed) onDepthOnlyMessage(resp fyersgosdk.DataResponse) {
+	data := map[string]interface{}(resp)
+	msgType, _ := data["type"].(string)
+	if msgType == "dp" {
+		f.onDepthMessage(data)
+	}
 }
 
 func (f *DataSocketFeed) onMessage(resp fyersgosdk.DataResponse) {
