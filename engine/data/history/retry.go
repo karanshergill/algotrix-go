@@ -24,6 +24,9 @@ func doFyersRequest(authToken, url string) ([]byte, error) {
 			delay *= 2
 		}
 
+		// Wait for rate limiter token before making request
+		globalRL.wait()
+
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			return nil, err

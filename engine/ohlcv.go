@@ -48,6 +48,11 @@ var ohlcvResolutions = map[string]ohlcvResolutionSpec{
 		MaxDays: 366,
 		Fetch:   history.FetchDailyOHLCV,
 	},
+	"5m": {
+		Table:   "nse_cm_ohlcv_5m",
+		MaxDays: 100,
+		Fetch:   history.Fetch5mOHLCV,
+	},
 	"1m": {
 		Table:   "nse_cm_ohlcv_1m",
 		MaxDays: 100,
@@ -73,7 +78,7 @@ func runOHLCV() {
 
 	spec, ok := ohlcvResolutions[*resolution]
 	if !ok {
-		log.Fatalf("invalid --resolution %q (expected one of: 1d, 1m, 5s)", *resolution)
+		log.Fatalf("invalid --resolution %q (expected one of: 1d, 5m, 1m, 5s)", *resolution)
 	}
 
 	from, err := parseOHLCVDate(*fromStr, "--from")
