@@ -51,8 +51,8 @@ func TestDefaultConfig(t *testing.T) {
 	}
 
 	// Baselines
-	if cfg.Baselines.ATRTradingDays != 14 {
-		t.Errorf("ATRTradingDays = %d, want 14", cfg.Baselines.ATRTradingDays)
+	if cfg.Baselines.ATRTradingDays != 30 {
+		t.Errorf("ATRTradingDays = %d, want 30", cfg.Baselines.ATRTradingDays)
 	}
 	if cfg.Baselines.VolumeSlotTradingDays != 10 {
 		t.Errorf("VolumeSlotTradingDays = %d, want 10", cfg.Baselines.VolumeSlotTradingDays)
@@ -161,8 +161,8 @@ rest:
 	if cfg.Hub.Port != 3002 {
 		t.Errorf("Hub.Port = %d, want 3002 (default)", cfg.Hub.Port)
 	}
-	if cfg.Baselines.ATRTradingDays != 14 {
-		t.Errorf("ATRTradingDays = %d, want 14 (default)", cfg.Baselines.ATRTradingDays)
+	if cfg.Baselines.ATRTradingDays != 30 {
+		t.Errorf("ATRTradingDays = %d, want 30 (default)", cfg.Baselines.ATRTradingDays)
 	}
 }
 

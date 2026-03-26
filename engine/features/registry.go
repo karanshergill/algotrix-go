@@ -3,6 +3,8 @@ package features
 import (
 	"sync"
 	"time"
+
+	"github.com/karanshergill/algotrix-go/utils"
 )
 
 // ---------------------------------------------------------------------------
@@ -168,7 +170,7 @@ func (r *Registry) FeatureNames() []string {
 // ---------------------------------------------------------------------------
 
 func timeToSlot(t time.Time) int {
-	h, m, _ := t.Clock()
+	h, m, _ := t.In(utils.IST).Clock()
 	mins := h*60 + m - 9*60 - 15 // minutes since 9:15
 	if mins < 0 {
 		return 0

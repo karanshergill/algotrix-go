@@ -425,8 +425,8 @@ func TestFeatureValues_Correctness(t *testing.T) {
 	// day_range_pct = (high - low) / prevClose * 100 = (105-105)/100*100 = 0.0
 	assertFeatureApprox(t, feat, "day_range_pct", 0.0, 0.001)
 
-	// exhaustion = (high - low) / ATR14d = (105-105)/10 = 0.0
-	assertFeatureApprox(t, feat, "exhaustion", 0.0, 0.001)
+	// exhaustion = abs(LTP - PrevClose) / ATR14d = abs(105-100)/10 = 0.5
+	assertFeatureApprox(t, feat, "exhaustion", 0.5, 0.001)
 
 	// update_intensity = Updates1m.Sum() = 1
 	assertFeatureApprox(t, feat, "update_intensity", 1.0, 0.001)

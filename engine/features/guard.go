@@ -54,6 +54,11 @@ func (g *FeedGuard) ValidateTick(isin string, ltp float64, volume int64, ts time
 	if g.lastLTP > 0 {
 		jumpPct := math.Abs(ltp-g.lastLTP) / g.lastLTP * 100
 		if jumpPct > g.config.MaxPriceJumpPct {
+			// Still update state so the guard doesn't get stuck at a stale price
+			// after a legitimate gap (circuit halt lifted, corporate action, etc.).
+			g.lastTS = ts
+			g.lastVolume = volume
+			g.lastLTP = ltp
 			return false, fmt.Sprintf("price jump %.1f%% exceeds max %.1f%%", jumpPct, g.config.MaxPriceJumpPct)
 		}
 	}

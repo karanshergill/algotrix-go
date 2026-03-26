@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/karanshergill/algotrix-go/utils"
 )
 
 // Setup creates and returns a fully initialized screener engine.
@@ -15,8 +16,7 @@ func Setup(ctx context.Context, pool *pgxpool.Pool) (*Engine, error) {
 	db := NewSignalDB(pool)
 
 	// 2. Load breakout thresholds for today
-	ist := time.FixedZone("IST", 5*3600+30*60)
-	today := time.Now().In(ist)
+	today := time.Now().In(utils.IST)
 
 	thresholds, err := LoadBreakoutThresholds(ctx, pool, today)
 	if err != nil {

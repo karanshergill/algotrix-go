@@ -1,9 +1,11 @@
 package features
 
 import (
-	"context"
 	"testing"
+	"context"
 	"time"
+
+	"github.com/karanshergill/algotrix-go/feed"
 )
 
 func TestFeedAdapter_AdaptTick(t *testing.T) {
@@ -18,39 +20,68 @@ func TestFeedAdapter_AdaptTick(t *testing.T) {
 	})
 
 	engine.RegisterStock("INE001", "RELIANCE", "")
-	engine.session.SessionStart(time.Now())
-
-	processed := make(chan string, 1)
-	engine.SetOnTick(func(isin string) {
-		processed <- isin
+	adapter := NewFeedAdapter(engine, nil)
+	ts := time.Now()
+	adapter.AdaptTick(feed.TickData{
+		Symbol:         "RELIANCE",
+		ISIN:           "INE001",
+		LTP:            2500.0,
+		Volume:         1000,
+		TS:             ts,
+		OpenPrice:      2490.0,
+		HighPrice:      2510.0,
+		LowPrice:       2480.0,
+		PrevClosePrice: 2450.0,
+		Change:         50.0,
+		ChangePct:      2.04,
+		TotBuyQty:      12000,
+		TotSellQty:     9000,
+		BidPrice:       2499.5,
+		AskPrice:       2500.5,
+		BidSize:        400,
+		AskSize:        500,
+		AvgTradePrice:  2497.25,
+		LastTradedQty:  75,
+		LastTradedTime: 1711443600,
+		ExchFeedTime:   1711443601,
+		OI:             3456,
+		YearHigh:       3100.0,
+		YearLow:        1900.0,
+		LowerCircuit:   2200.0,
+		UpperCircuit:   2700.0,
 	})
 
-	adapter := NewFeedAdapter(engine, nil)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	go engine.Run(ctx)
-
-	adapter.AdaptTick("RELIANCE", "INE001", 2500.0, 1000, time.Now())
-
 	select {
-	case isin := <-processed:
-		if isin != "INE001" {
-			t.Fatalf("expected INE001, got %s", isin)
+	case ev := <-engine.tickCh:
+		if ev.ISIN != "INE001" || ev.Symbol != "RELIANCE" {
+			t.Fatalf("unexpected tick identity: %+v", ev)
+		}
+		if ev.LTP != 2500.0 || ev.Volume != 1000 || !ev.TS.Equal(ts) {
+			t.Fatalf("base tick fields not mapped: %+v", ev)
+		}
+		if ev.OpenPrice != 2490.0 || ev.HighPrice != 2510.0 || ev.LowPrice != 2480.0 {
+			t.Fatalf("ohlc fields not mapped: %+v", ev)
+		}
+		if ev.PrevClosePrice != 2450.0 || ev.Change != 50.0 || ev.ChangePct != 2.04 {
+			t.Fatalf("change fields not mapped: %+v", ev)
+		}
+		if ev.TotBuyQty != 12000 || ev.TotSellQty != 9000 {
+			t.Fatalf("book totals not mapped: %+v", ev)
+		}
+		if ev.BidPrice != 2499.5 || ev.AskPrice != 2500.5 || ev.BidSize != 400 || ev.AskSize != 500 {
+			t.Fatalf("level-1 fields not mapped: %+v", ev)
+		}
+		if ev.AvgTradePrice != 2497.25 || ev.LastTradedQty != 75 || ev.OI != 3456 {
+			t.Fatalf("trade fields not mapped: %+v", ev)
+		}
+		if ev.LastTradedTime != 1711443600 || ev.ExchFeedTime != 1711443601 {
+			t.Fatalf("exchange timestamps not mapped: %+v", ev)
+		}
+		if ev.YearHigh != 3100.0 || ev.YearLow != 1900.0 || ev.LowerCircuit != 2200.0 || ev.UpperCircuit != 2700.0 {
+			t.Fatalf("range/circuit fields not mapped: %+v", ev)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("tick not processed within timeout")
-	}
-
-	s := engine.Stock("INE001")
-	if s == nil {
-		t.Fatal("stock not found")
-	}
-	if s.LTP != 2500.0 {
-		t.Errorf("expected LTP=2500, got %f", s.LTP)
-	}
-	if s.CumulativeVolume != 1000 {
-		t.Errorf("expected volume=1000, got %d", s.CumulativeVolume)
+		t.Fatal("tick was not enqueued")
 	}
 }
 
@@ -117,12 +148,12 @@ func TestFeedAdapter_NonBlocking(t *testing.T) {
 	adapter := NewFeedAdapter(engine, nil)
 
 	// Fill the tick channel (don't start engine — channel stays full)
-	adapter.AdaptTick("RELIANCE", "INE001", 100.0, 100, time.Now())
+	adapter.AdaptTick(feed.TickData{Symbol: "RELIANCE", ISIN: "INE001", LTP: 100.0, Volume: 100, TS: time.Now()})
 
 	// This must not block
 	done := make(chan struct{})
 	go func() {
-		adapter.AdaptTick("RELIANCE", "INE001", 101.0, 200, time.Now())
+		adapter.AdaptTick(feed.TickData{Symbol: "RELIANCE", ISIN: "INE001", LTP: 101.0, Volume: 200, TS: time.Now()})
 		close(done)
 	}()
 

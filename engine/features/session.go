@@ -66,6 +66,8 @@ func (sm *SessionManager) SessionStart(date time.Time) {
 		s.CumulativeBuyVol = 0
 		s.CumulativeSellVol = 0
 		s.UpdateCount = 0
+		s.ExchVWAP = 0
+		s.LastTradedQty = 0
 		s.LastDirection = 0
 		s.LastLTP = 0
 
@@ -100,6 +102,9 @@ func (sm *SessionManager) SessionStart(date time.Time) {
 		}
 		if s.Low5m != nil {
 			s.Low5m.Reset()
+		}
+		if s.BookImbalance60s != nil {
+			s.BookImbalance60s.Reset()
 		}
 
 		// Reset slot volume accumulator

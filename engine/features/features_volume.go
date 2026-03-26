@@ -33,11 +33,13 @@ func RegisterVolumeFeatures(r *Registry) {
 		Name: "buy_pressure_5m", Version: 1, Category: "volume",
 		Trigger: TriggerTick,
 		Ready: func(s *StockState, m *MarketState) bool {
-			return s.BuyVol5m.Sum()+s.SellVol5m.Sum() > 0
+			now := s.LastTickTS
+			return s.BuyVol5m.SumAt(now)+s.SellVol5m.SumAt(now) > 0
 		},
 		Compute: func(s *StockState, m *MarketState, sec *SectorState) float64 {
-			buy := s.BuyVol5m.Sum()
-			total := buy + s.SellVol5m.Sum()
+			now := s.LastTickTS
+			buy := s.BuyVol5m.SumAt(now)
+			total := buy + s.SellVol5m.SumAt(now)
 			return float64(buy) / float64(total)
 		},
 	})
@@ -75,7 +77,8 @@ func RegisterVolumeFeatures(r *Registry) {
 		Trigger: TriggerTick,
 		Ready:   func(s *StockState, m *MarketState) bool { return true },
 		Compute: func(s *StockState, m *MarketState, sec *SectorState) float64 {
-			return float64(s.BuyVol5m.Sum() + s.SellVol5m.Sum())
+			now := s.LastTickTS
+			return float64(s.BuyVol5m.SumAt(now) + s.SellVol5m.SumAt(now))
 		},
 	})
 }

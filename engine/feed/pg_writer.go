@@ -30,16 +30,27 @@ type DepthRow struct {
 
 // TickRow is one tick row for nse_cm_ticks.
 type TickRow struct {
-	Timestamp time.Time
-	ISIN      string
-	Ltp       *float64
-	Volume    *int64
-	Open      *float64
-	High      *float64
-	Low       *float64
-	PrevClose *float64
-	Change    *float64
-	ChangePct *float64
+	Timestamp      time.Time
+	ISIN           string
+	Ltp            *float64
+	Volume         *int64
+	Open           *float64
+	High           *float64
+	Low            *float64
+	PrevClose      *float64
+	Change         *float64
+	ChangePct      *float64
+	TotalBuyQty    *int64
+	TotalSellQty   *int64
+	BidPrice1      *float64
+	AskPrice1      *float64
+	BidQty1        *int64
+	AskQty1        *int64
+	AvgPrice       *float64
+	Ltq            *int64
+	Oi             *int64
+	LowerCircuit   *float64
+	UpperCircuit   *float64
 }
 
 // PGWriter batches DepthRow and TickRow writes to PostgreSQL/TimescaleDB.
@@ -207,10 +218,22 @@ func (w *PGWriter) flushTicks(rows []TickRow) {
 			r.Ltp, r.Volume,
 			r.Open, r.High, r.Low, r.PrevClose,
 			r.Change, r.ChangePct,
+			r.TotalBuyQty, r.TotalSellQty,
+			r.BidPrice1, r.AskPrice1,
+			r.BidQty1, r.AskQty1,
+			r.AvgPrice, r.Ltq, r.Oi,
+			r.LowerCircuit, r.UpperCircuit,
 		})
 	}
 
-	cols := []string{"timestamp", "isin", "ltp", "volume", "open", "high", "low", "prev_close", "change", "change_pct"}
+	cols := []string{
+		"timestamp", "isin", "ltp", "volume", "open", "high", "low", "prev_close", "change", "change_pct",
+		"total_buy_qty", "total_sell_qty",
+		"bid_price_1", "ask_price_1",
+		"bid_qty_1", "ask_qty_1",
+		"avg_price", "ltq", "oi",
+		"lower_circuit", "upper_circuit",
+	}
 	n, err := w.pool.CopyFrom(
 		ctx,
 		pgx.Identifier{w.ticksTable},

@@ -10,8 +10,38 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// TickData is the normalized SymbolUpdate payload passed through the tick pipeline.
+type TickData struct {
+	Symbol         string
+	ISIN           string
+	LTP            float64
+	Volume         int64
+	TS             time.Time
+	OpenPrice      float64
+	HighPrice      float64
+	LowPrice       float64
+	PrevClosePrice float64
+	Change         float64
+	ChangePct      float64
+	TotBuyQty      int64
+	TotSellQty     int64
+	BidPrice       float64
+	AskPrice       float64
+	BidSize        int64
+	AskSize        int64
+	AvgTradePrice  float64
+	LastTradedQty  int64
+	LastTradedTime int64
+	ExchFeedTime   int64
+	OI             int64
+	YearHigh       float64
+	YearLow        float64
+	LowerCircuit   float64
+	UpperCircuit   float64
+}
+
 // TickCallback is called for every valid tick with ISIN-resolved data.
-type TickCallback func(symbol, isin string, ltp float64, volume int64, ts time.Time)
+type TickCallback func(data TickData)
 
 // DepthCallback is called for every valid depth update with ISIN-resolved data.
 type DepthCallback func(isin string, bids, asks [5]struct{ Price float64; Qty int64 }, ts time.Time)
@@ -274,6 +304,11 @@ func (f *DataSocketFeed) onTickMessage(data map[string]interface{}) {
 	}
 
 	ts := time.Now()
+	tick := TickData{
+		Symbol: symbol,
+		ISIN:   isin,
+		TS:     ts,
+	}
 
 	ltp, ltpOk := asFloat64(data["ltp"])
 	vol, volOk := asInt64(data["vol_traded_today"])
@@ -283,31 +318,110 @@ func (f *DataSocketFeed) onTickMessage(data map[string]interface{}) {
 	prevClose, prevCloseOk := asFloat64(data["prev_close_price"])
 	ch, chOk := asFloat64(data["ch"])
 	chp, chpOk := asFloat64(data["chp"])
+	totBuyQty, totBuyQtyOk := asInt64(data["tot_buy_qty"])
+	totSellQty, totSellQtyOk := asInt64(data["tot_sell_qty"])
+	bidPrice, bidPriceOk := asFloat64(data["bid_price"])
+	askPrice, askPriceOk := asFloat64(data["ask_price"])
+	bidSize, bidSizeOk := asInt64(data["bid_size"])
+	askSize, askSizeOk := asInt64(data["ask_size"])
+	avgTradePrice, avgTradePriceOk := asFloat64(data["avg_trade_price"])
+	lastTradedQty, lastTradedQtyOk := asInt64(data["last_traded_qty"])
+	lastTradedTime, lastTradedTimeOk := asInt64(data["last_traded_time"])
+	exchFeedTime, exchFeedTimeOk := asInt64(data["exch_feed_time"])
+	oi, oiOk := asInt64(data["OI"])
+	yearHigh, yearHighOk := asFloat64(data["Yhigh"])
+	yearLow, yearLowOk := asFloat64(data["Ylow"])
+	lowerCircuit, lowerCircuitOk := asFloat64(data["lower_ckt"])
+	upperCircuit, upperCircuitOk := asFloat64(data["upper_ckt"])
 
 	row := TickRow{Timestamp: ts, ISIN: isin}
 	if ltpOk {
+		tick.LTP = ltp
 		row.Ltp = &ltp
 	}
 	if volOk {
+		tick.Volume = vol
 		row.Volume = &vol
 	}
 	if openOk {
+		tick.OpenPrice = openP
 		row.Open = &openP
 	}
 	if highOk {
+		tick.HighPrice = highP
 		row.High = &highP
 	}
 	if lowOk {
+		tick.LowPrice = lowP
 		row.Low = &lowP
 	}
 	if prevCloseOk {
+		tick.PrevClosePrice = prevClose
 		row.PrevClose = &prevClose
 	}
 	if chOk {
+		tick.Change = ch
 		row.Change = &ch
 	}
 	if chpOk {
+		tick.ChangePct = chp
 		row.ChangePct = &chp
+	}
+	if totBuyQtyOk {
+		tick.TotBuyQty = totBuyQty
+		row.TotalBuyQty = &totBuyQty
+	}
+	if totSellQtyOk {
+		tick.TotSellQty = totSellQty
+		row.TotalSellQty = &totSellQty
+	}
+	if bidPriceOk {
+		tick.BidPrice = bidPrice
+		row.BidPrice1 = &bidPrice
+	}
+	if askPriceOk {
+		tick.AskPrice = askPrice
+		row.AskPrice1 = &askPrice
+	}
+	if bidSizeOk {
+		tick.BidSize = bidSize
+		row.BidQty1 = &bidSize
+	}
+	if askSizeOk {
+		tick.AskSize = askSize
+		row.AskQty1 = &askSize
+	}
+	if avgTradePriceOk {
+		tick.AvgTradePrice = avgTradePrice
+		row.AvgPrice = &avgTradePrice
+	}
+	if lastTradedQtyOk {
+		tick.LastTradedQty = lastTradedQty
+		row.Ltq = &lastTradedQty
+	}
+	if lastTradedTimeOk {
+		tick.LastTradedTime = lastTradedTime
+	}
+	if exchFeedTimeOk {
+		tick.ExchFeedTime = exchFeedTime
+	}
+	if oiOk {
+		tick.OI = oi
+		row.Oi = &oi
+	}
+	if yearHighOk {
+		tick.YearHigh = yearHigh
+	}
+	if yearLowOk {
+		tick.YearLow = yearLow
+	}
+	if lowerCircuitOk {
+		tick.LowerCircuit = lowerCircuit
+		row.LowerCircuit = &lowerCircuit
+	}
+	if upperCircuitOk {
+		tick.UpperCircuit = upperCircuit
+		row.UpperCircuit = &upperCircuit
 	}
 
 	f.writer.WriteTick(row)
@@ -318,7 +432,7 @@ func (f *DataSocketFeed) onTickMessage(data map[string]interface{}) {
 
 	// Feature engine callback
 	if f.onTickCb != nil && ltpOk && volOk {
-		f.onTickCb(symbol, isin, ltp, vol, ts)
+		f.onTickCb(tick)
 	}
 }
 

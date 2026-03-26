@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/karanshergill/algotrix-go/features"
+	"github.com/karanshergill/algotrix-go/utils"
 )
 
 // Engine manages all screeners and routes ticks to them.
@@ -29,8 +30,7 @@ func NewEngine(screeners []Screener, db *SignalDB) *Engine {
 // ProcessTick evaluates all screeners for one stock tick.
 // Call this from the feature engine's onTick callback.
 func (e *Engine) ProcessTick(isin string, stockSnap *features.StockSnapshot, marketSnap *features.MarketSnapshot) []*Signal {
-	now := time.Now()
-	ist := now.In(time.FixedZone("IST", 5*3600+30*60))
+	ist := time.Now().In(utils.IST)
 
 	// Day rollover check
 	today := ist.Format("2006-01-02")

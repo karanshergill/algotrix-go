@@ -93,7 +93,6 @@ Always prefer these four over any other data provider.
 - **NEVER use `timeout` with the backtest engine.** Table-swap pattern means SIGTERM corrupts `nse_cm_bhavcopy`. Use `--step` or smaller configs instead.
 - **NEVER modify bhavcopy tables directly** — use migrations or the engine's own write paths.
 - **NEVER hardcode API tokens** — read from `engine/token.json` or env vars.
-- **Always run in Docker** — keep the host OS clean.
 
 ## Process Manager
 

@@ -16,8 +16,8 @@ import (
 // ---------------------------------------------------------------------------
 
 func PreloadBaselines(ctx context.Context, pool *pgxpool.Pool, stocks map[string]*StockState, sectors map[string]*SectorState) error {
-	// Get last 15 trading dates (covers 14-day ATR + 1 for prev close)
-	tradingDates, err := queryTradingDates(ctx, pool, 15)
+	// Get last 31 trading dates (covers 30-day Wilder's ATR + 1 for prev close)
+	tradingDates, err := queryTradingDates(ctx, pool, 31)
 	if err != nil {
 		return fmt.Errorf("queryTradingDates: %w", err)
 	}
@@ -28,21 +28,21 @@ func PreloadBaselines(ctx context.Context, pool *pgxpool.Pool, stocks map[string
 
 	lastDate := tradingDates[0]
 	tenthIdx := min(9, len(tradingDates)-1)
-	fourteenthIdx := min(13, len(tradingDates)-1)
+	thirtiethIdx := min(29, len(tradingDates)-1)
 	tenthDate := tradingDates[tenthIdx]
-	fourteenthDate := tradingDates[fourteenthIdx]
+	thirtiethDate := tradingDates[thirtiethIdx]
 
-	log.Printf("[baselines] trading dates: last=%s, 10th=%s, 14th=%s (found %d dates)",
+	log.Printf("[baselines] trading dates: last=%s, 10th=%s, 30th=%s (found %d dates)",
 		lastDate.Format("2006-01-02"), tenthDate.Format("2006-01-02"),
-		fourteenthDate.Format("2006-01-02"), len(tradingDates))
+		thirtiethDate.Format("2006-01-02"), len(tradingDates))
 
 	// 1. Previous close
 	if err := loadPrevClose(ctx, pool, stocks, lastDate); err != nil {
 		return fmt.Errorf("loadPrevClose: %w", err)
 	}
 
-	// 2. 14-trading-day ATR
-	if err := loadATR(ctx, pool, stocks, tradingDates, fourteenthIdx); err != nil {
+	// 2. 30-trading-day ATR (Wilder's smoothing, v2 parity)
+	if err := loadATR(ctx, pool, stocks, tradingDates, thirtiethIdx); err != nil {
 		return fmt.Errorf("loadATR: %w", err)
 	}
 
@@ -108,12 +108,16 @@ func loadPrevClose(ctx context.Context, pool *pgxpool.Pool, stocks map[string]*S
 	return rows.Err()
 }
 
-// loadATR computes 14-trading-day ATR for each stock.
+// loadATR computes ATR for each stock using Wilder's smoothing (v2 parity).
 // TR = max(high-low, |high-prevClose|, |low-prevClose|)
-// ATR = mean(TR over N days)
-func loadATR(ctx context.Context, pool *pgxpool.Pool, stocks map[string]*StockState, tradingDates []time.Time, fourteenthIdx int) error {
-	// We need OHLC data from the oldest date up to the most recent
-	oldestDate := tradingDates[fourteenthIdx]
+// ATR = Wilder's: seed with mean of first N TRs, then smooth with
+//
+//	ATR_i = (ATR_{i-1} * (N-1) + TR_i) / N
+//
+// where N = number of trading days in the window.
+func loadATR(ctx context.Context, pool *pgxpool.Pool, stocks map[string]*StockState, tradingDates []time.Time, periodIdx int) error {
+	oldestDate := tradingDates[periodIdx]
+	wilderPeriod := periodIdx + 1 // e.g. 30 days
 
 	rows, err := pool.Query(ctx,
 		`SELECT isin, date, open, high, low, close, prev_close
@@ -125,7 +129,6 @@ func loadATR(ctx context.Context, pool *pgxpool.Pool, stocks map[string]*StockSt
 	}
 	defer rows.Close()
 
-	// Collect OHLC rows grouped by ISIN
 	type ohlcRow struct {
 		high, low, prevClose float64
 	}
@@ -148,21 +151,38 @@ func loadATR(ctx context.Context, pool *pgxpool.Pool, stocks map[string]*StockSt
 
 	loaded := 0
 	for isin, ohlcData := range isinRows {
-		if len(ohlcData) == 0 {
+		n := len(ohlcData)
+		if n == 0 {
 			continue
 		}
-		var trSum float64
-		for _, r := range ohlcData {
+
+		// Compute true ranges
+		trs := make([]float64, n)
+		for i, r := range ohlcData {
 			hl := r.high - r.low
 			hpc := math.Abs(r.high - r.prevClose)
 			lpc := math.Abs(r.low - r.prevClose)
-			tr := math.Max(hl, math.Max(hpc, lpc))
-			trSum += tr
+			trs[i] = math.Max(hl, math.Max(hpc, lpc))
 		}
-		stocks[isin].ATR14d = trSum / float64(len(ohlcData))
+
+		// Wilder's smoothing: seed with mean of first wilderPeriod TRs
+		seedN := wilderPeriod
+		if seedN > n {
+			seedN = n
+		}
+		var seedSum float64
+		for i := 0; i < seedN; i++ {
+			seedSum += trs[i]
+		}
+		atr := seedSum / float64(seedN)
+		for i := seedN; i < n; i++ {
+			atr = (atr*float64(seedN-1) + trs[i]) / float64(seedN)
+		}
+
+		stocks[isin].ATR14d = atr
 		loaded++
 	}
-	log.Printf("[baselines] loadATR: %d stocks loaded", loaded)
+	log.Printf("[baselines] loadATR: %d stocks loaded (wilder period=%d)", loaded, wilderPeriod)
 	return nil
 }
 

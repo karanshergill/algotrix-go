@@ -2,11 +2,9 @@ package main
 
 import (
 	"bufio"
-	_ "bytes"
 	"context"
 	"fmt"
 	"log"
-	_ "net/http"
 	"os"
 	"os/exec"
 	"sort"
@@ -36,12 +34,7 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load("internal/config/fyers.yaml")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Check for subcommands.
+	// Check for subcommands first — they handle their own config.
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "scrips":
@@ -72,6 +65,12 @@ func main() {
 			runUniverseRefresh()
 			return
 		}
+	}
+
+	// Default: interactive login flow — needs Fyers config.
+	cfg, err := config.Load("internal/config/fyers.yaml")
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	a := auth.New(cfg.Fyers)
@@ -121,7 +120,6 @@ func main() {
 		log.Fatal("Symbol load failed: ", err)
 	}
 
-	_ = cfg
 }
 
 // runScrips fetches scrip master data from NSE and upserts into nse_cm_scrips.
@@ -280,6 +278,11 @@ func runFeed() {
 	if poolErr != nil {
 		log.Printf("[Screener] atdb pool failed (non-fatal): %v", poolErr)
 	}
+	defer func() {
+		if atdbPool != nil {
+			atdbPool.Close()
+		}
+	}()
 	// Signal broadcast function — set after recorder is created
 	var broadcastSignal func(map[string]interface{})
 	var broadcastMu sync.Mutex
@@ -290,6 +293,9 @@ func runFeed() {
 		log.Println("[Screener] LIVE — 5 screeners active")
 
 		// Wire onTick: feature engine calls screeners after each tick
+		if feEngine == nil {
+			log.Println("[Screener] skipping onTick wiring — feature engine not available")
+		} else {
 		feEngine.SetOnTick(func(isin string) {
 			snap := feEngine.Snapshot()
 			if snap == nil {
@@ -300,8 +306,6 @@ func runFeed() {
 				return
 			}
 			signals := scrEngine.ProcessTick(isin, &stockSnap, &snap.Market)
-			if len(signals) > 0 {
-			}
 			broadcastMu.Lock()
 			cb := broadcastSignal
 			broadcastMu.Unlock()
@@ -321,6 +325,7 @@ func runFeed() {
 				}
 			}
 		})
+		}
 	}
 
 	recorder := feed.NewRecorder(configPath, symbolList)
@@ -339,8 +344,8 @@ func runFeed() {
 
 	// Wire tick callback to feature engine
 	if feAdapter != nil {
-		recorder.SetOnTick(func(symbol, isin string, ltp float64, volume int64, ts time.Time) {
-			feAdapter.AdaptTick(symbol, isin, ltp, volume, ts)
+		recorder.SetOnTick(func(data feed.TickData) {
+			feAdapter.AdaptTick(data)
 		})
 
 		// Wire depth callback to feature engine — enables book_imbalance feature
@@ -394,9 +399,12 @@ func loadTradeableSymbols(dsn string) ([]string, error) {
 // Intended to run daily pre-market via cron (e.g. 8:45 AM IST).
 // Usage: ./algotrix universe-refresh
 func runUniverseRefresh() {
-	dsn := "postgres://me:algotrix@localhost:5432/atdb"
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
+	dbCfg, err := conns.LoadDBConfig("db/conns/db.yaml")
+	if err != nil {
+		log.Fatalf("[universe-refresh] load db config: %v", err)
+	}
+	pool, err := conns.NewPostgresPool(ctx, &dbCfg.Postgres)
 	if err != nil {
 		log.Fatalf("[universe-refresh] connect: %v", err)
 	}
@@ -568,7 +576,7 @@ func runWatchlist() {
 	}
 
 	// Parse common flags.
-	var symbolFlag, csvPath, weightsJSON, filtersJSON string
+	var symbolFlag, csvPath, weightsJSON string
 	lookback := 30
 	coverage := 1.0
 	madtvFloor := 1e9 // ₹100 Crore
@@ -599,8 +607,6 @@ func runWatchlist() {
 			fnoOnly = true
 		case "--weights":
 			if i+1 < len(os.Args) { weightsJSON = os.Args[i+1] }
-		case "--filters":
-			if i+1 < len(os.Args) { filtersJSON = os.Args[i+1] }
 		}
 	}
 
@@ -646,28 +652,16 @@ func runWatchlist() {
 				cfg.WeightRangeEff = norm("rangeEff")
 				cfg.WeightParkinson = norm("parkinson")
 				cfg.WeightMomentum = norm("momentum")
+				cfg.WeightBeta = norm("beta")
+				cfg.WeightRS = norm("rs")
+				cfg.WeightGap = norm("gap")
+				cfg.WeightVolRatio = norm("volRatio")
+				cfg.WeightEMASlope = norm("emaSlope")
 			}
 		}
 	}
 
-	// Parse per-metric filter thresholds JSON.
-	if filtersJSON != "" {
-		var raw map[string]float64
-		if err := json.Unmarshal([]byte(filtersJSON), &raw); err == nil {
-			// TODO: if v, ok := raw["minADRPct"]; ok { cfg.MinADRPct = v }
-			// TODO: if v, ok := raw["minRangeEff"]; ok { cfg.MinRangeEff = v }
-			// TODO: if v, ok := raw["minMomentum"]; ok { cfg.MinMomentum = v }
-			// TODO: if v, ok := raw["minParkinson"]; ok { cfg.MinParkinson = v }
-			// TODO: if v, ok := raw["maxAmihud"]; ok { cfg.MaxAmihud = v }
-			// TODO: if v, ok := raw["minTradeSize"]; ok { cfg.MinTradeSize = v }
-			// TODO: // TODO: if v, ok := raw["minATRPct"]; ok { cfg.MinATRPct = v }
-			// TODO: // TODO: if v, ok := raw["minBeta"]; ok { cfg.MinBeta = v }
-			// TODO: // TODO: if v, ok := raw["minRS"]; ok { cfg.MinRS = v }
-			// TODO: if v, ok := raw["minGap"]; ok { cfg.MinGap = v }
-			// TODO: if v, ok := raw["minVolRatio"]; ok { cfg.MinVolRatio = v }
-			// TODO: if v, ok := raw["minEMASlope"]; ok { cfg.MinEMASlope = v }
-		}
-	}
+
 
 	// FnO-only universe filter.
 	if fnoOnly {
@@ -1048,7 +1042,7 @@ func runBacktest() {
 	cfg := watchlist.DefaultBacktestConfig()
 	jsonOutput := false
 	var minMcapCr, maxMcapCr float64
-	var weightsJSON, filtersJSON string
+	var weightsJSON string
 
 	for i, arg := range os.Args {
 		switch arg {
@@ -1083,10 +1077,6 @@ func runBacktest() {
 		case "--weights":
 			if i+1 < len(os.Args) {
 				weightsJSON = os.Args[i+1]
-			}
-		case "--filters":
-			if i+1 < len(os.Args) {
-				filtersJSON = os.Args[i+1]
 			}
 		case "--json":
 			jsonOutput = true
@@ -1130,24 +1120,7 @@ func runBacktest() {
 		}
 	}
 
-	// Parse per-metric filter thresholds JSON.
-	if filtersJSON != "" {
-		var raw map[string]float64
-		if err := json.Unmarshal([]byte(filtersJSON), &raw); err == nil {
-// TODO: 			if v, ok := raw["minADRPct"]; ok { cfg.BuildConfig.MinADRPct = v }
-// TODO: 			if v, ok := raw["minRangeEff"]; ok { cfg.BuildConfig.MinRangeEff = v }
-// TODO: 			if v, ok := raw["minMomentum"]; ok { cfg.BuildConfig.MinMomentum = v }
-// TODO: 			if v, ok := raw["minParkinson"]; ok { cfg.BuildConfig.MinParkinson = v }
-// TODO: 			if v, ok := raw["maxAmihud"]; ok { cfg.BuildConfig.MaxAmihud = v }
-// TODO: 			if v, ok := raw["minTradeSize"]; ok { cfg.BuildConfig.MinTradeSize = v }
-			// TODO: if v, ok := raw["minATRPct"]; ok { cfg.BuildConfig.MinATRPct = v }
-			// TODO: if v, ok := raw["minBeta"]; ok { cfg.BuildConfig.MinBeta = v }
-			// TODO: if v, ok := raw["minRS"]; ok { cfg.BuildConfig.MinRS = v }
-// TODO: 			if v, ok := raw["minGap"]; ok { cfg.BuildConfig.MinGap = v }
-// TODO: 			if v, ok := raw["minVolRatio"]; ok { cfg.BuildConfig.MinVolRatio = v }
-// TODO: 			if v, ok := raw["minEMASlope"]; ok { cfg.BuildConfig.MinEMASlope = v }
-		}
-	}
+
 
 	// DB connection.
 	dbCfg, err := conns.LoadDBConfig("db/conns/db.yaml")

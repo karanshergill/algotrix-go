@@ -23,18 +23,39 @@ func NewFeedAdapter(engine *FeatureEngine, hub *feed.Hub) *FeedAdapter {
 
 // AdaptTick converts a feed tick into a TickEvent and sends it to the engine.
 // Non-blocking: drops the event if the channel is full.
-func (fa *FeedAdapter) AdaptTick(symbol, isin string, ltp float64, volume int64, ts time.Time) {
+func (fa *FeedAdapter) AdaptTick(data feed.TickData) {
 	ev := TickEvent{
-		ISIN:   isin,
-		Symbol: symbol,
-		LTP:    ltp,
-		Volume: volume,
-		TS:     ts,
+		ISIN:           data.ISIN,
+		Symbol:         data.Symbol,
+		LTP:            data.LTP,
+		Volume:         data.Volume,
+		TS:             data.TS,
+		OpenPrice:      data.OpenPrice,
+		HighPrice:      data.HighPrice,
+		LowPrice:       data.LowPrice,
+		PrevClosePrice: data.PrevClosePrice,
+		Change:         data.Change,
+		ChangePct:      data.ChangePct,
+		TotBuyQty:      data.TotBuyQty,
+		TotSellQty:     data.TotSellQty,
+		BidPrice:       data.BidPrice,
+		AskPrice:       data.AskPrice,
+		BidSize:        data.BidSize,
+		AskSize:        data.AskSize,
+		AvgTradePrice:  data.AvgTradePrice,
+		LastTradedQty:  data.LastTradedQty,
+		LastTradedTime: data.LastTradedTime,
+		ExchFeedTime:   data.ExchFeedTime,
+		OI:             data.OI,
+		YearHigh:       data.YearHigh,
+		YearLow:        data.YearLow,
+		LowerCircuit:   data.LowerCircuit,
+		UpperCircuit:   data.UpperCircuit,
 	}
 	select {
 	case fa.engine.tickCh <- ev:
 	default:
-		log.Printf("[FeedAdapter] WARN: tick channel full, dropping tick for %s (%s)", symbol, isin)
+		log.Printf("[FeedAdapter] WARN: tick channel full, dropping tick for %s (%s)", data.Symbol, data.ISIN)
 	}
 }
 

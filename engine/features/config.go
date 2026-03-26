@@ -145,7 +145,7 @@ func DefaultConfig() *EngineConfig {
 		},
 
 		Baselines: BaselineConfig{
-			ATRTradingDays:        14,
+			ATRTradingDays:        30,
 			VolumeSlotTradingDays: 10,
 			AvgVolumeTradingDays:  10,
 			MinSlotSamples:        5,

@@ -6,14 +6,10 @@ func RegisterBookFeatures(r *Registry) {
 		Name: "book_imbalance", Version: 1, Category: "book",
 		Trigger: TriggerDepth,
 		Ready: func(s *StockState, m *MarketState) bool {
-			return s.HasDepth
+			return s.HasDepth && s.BookImbalance60s != nil
 		},
 		Compute: func(s *StockState, m *MarketState, sec *SectorState) float64 {
-			total := s.BidQtys[0] + s.AskQtys[0]
-			if total == 0 {
-				return 0.5
-			}
-			return float64(s.BidQtys[0]) / float64(total)
+			return s.BookImbalance60s.Avg(s.LastDepthTS, 0.5)
 		},
 	})
 
@@ -42,7 +38,7 @@ func RegisterBookFeatures(r *Registry) {
 		Name: "spread_bps", Version: 1, Category: "book",
 		Trigger: TriggerDepth,
 		Ready: func(s *StockState, m *MarketState) bool {
-			return s.HasDepth && s.BidPrices[0] > 0
+			return s.HasDepth && s.BidPrices[0] > 0 && s.AskPrices[0] > s.BidPrices[0]
 		},
 		Compute: func(s *StockState, m *MarketState, sec *SectorState) float64 {
 			return (s.AskPrices[0] - s.BidPrices[0]) / s.BidPrices[0] * 10000

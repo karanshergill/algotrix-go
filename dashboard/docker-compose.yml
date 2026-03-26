@@ -1,5 +1,0 @@
-services:
-  frontend:
-    build: .
-    network_mode: host
-    restart: unless-stopped

@@ -46,6 +46,12 @@ type StockState struct {
 	CumulativeBuyVol   int64
 	CumulativeSellVol  int64
 	UpdateCount        int64 // feed updates, NOT trade count
+	ExchVWAP           float64
+	LastTradedQty      int64
+	YearHigh           float64
+	YearLow            float64
+	LowerCircuit       float64
+	UpperCircuit       float64
 
 	LastDirection int8    // +1 uptick, -1 downtick, 0 unchanged
 	LastLTP       float64
@@ -61,13 +67,14 @@ type StockState struct {
 	LastDepthTS time.Time
 
 	// === Rolling Windows ===
-	Volume1m  *RollingSum     // 60s window
-	Volume5m  *RollingSum     // 300s window
-	BuyVol5m  *RollingSum     // 300s window
-	SellVol5m *RollingSum     // 300s window
-	Updates1m *RollingSum     // 60s window (activity proxy)
-	High5m    *RollingExtreme // 300s max
-	Low5m     *RollingExtreme // 300s min
+	Volume1m         *RollingSum     // 60s window
+	Volume5m         *RollingSum     // 300s window
+	BuyVol5m         *RollingSum     // 300s window
+	SellVol5m        *RollingSum     // 300s window
+	Updates1m        *RollingSum     // 60s window (activity proxy)
+	High5m           *RollingExtreme // 300s max
+	Low5m            *RollingExtreme // 300s min
+	BookImbalance60s *RollingAvg     // 60s window (v2 parity: avg of depth snapshots)
 
 	// === Slot Volume Accumulator ===
 	CurrentSlotVol int64 // volume accumulated in the current 5-min slot
@@ -143,8 +150,13 @@ func (s *SectorState) UpdateFromStock(stock *StockState, vwap float64) {
 	}
 
 	// --- Compute new contribution ---
-	isUp := stock.LTP > stock.PrevClose && stock.PrevClose > 0
-	isDown := stock.LTP < stock.PrevClose && stock.PrevClose > 0
+	// v2 parity: stocks within ±0.05% of prev close are "unchanged"
+	var isUp, isDown bool
+	if stock.PrevClose > 0 {
+		changePct := (stock.LTP - stock.PrevClose) / stock.PrevClose * 100
+		isUp = changePct > 0.05
+		isDown = changePct < -0.05
+	}
 	isAboveVWAP := vwap > 0 && stock.LTP > vwap
 
 	// --- Add new contribution ---
@@ -221,8 +233,13 @@ func (m *MarketState) UpdateFromStock(s *StockState, vwap float64) {
 	}
 
 	// --- Compute new contribution ---
-	isUp := s.LTP > s.PrevClose && s.PrevClose > 0
-	isDown := s.LTP < s.PrevClose && s.PrevClose > 0
+	// v2 parity: stocks within ±0.05% of prev close are "unchanged"
+	var isUp, isDown bool
+	if s.PrevClose > 0 {
+		changePct := (s.LTP - s.PrevClose) / s.PrevClose * 100
+		isUp = changePct > 0.05
+		isDown = changePct < -0.05
+	}
 	isAboveVWAP := vwap > 0 && s.LTP > vwap
 
 	// --- Add new contribution ---

@@ -2,6 +2,7 @@ package features
 
 import (
 	"context"
+	"log"
 	"sync/atomic"
 	"time"
 )
@@ -12,11 +13,32 @@ import (
 
 // TickEvent represents a single price/volume update from the feed.
 type TickEvent struct {
-	ISIN   string
-	Symbol string
-	LTP    float64
-	Volume int64
-	TS     time.Time
+	ISIN           string
+	Symbol         string
+	LTP            float64
+	Volume         int64
+	TS             time.Time
+	OpenPrice      float64
+	HighPrice      float64
+	LowPrice       float64
+	PrevClosePrice float64
+	Change         float64
+	ChangePct      float64
+	TotBuyQty      int64
+	TotSellQty     int64
+	BidPrice       float64
+	AskPrice       float64
+	BidSize        int64
+	AskSize        int64
+	AvgTradePrice  float64
+	LastTradedQty  int64
+	LastTradedTime int64
+	ExchFeedTime   int64
+	OI             int64
+	YearHigh       float64
+	YearLow        float64
+	LowerCircuit   float64
+	UpperCircuit   float64
 }
 
 // DepthEvent represents a market depth snapshot from the feed.
@@ -72,9 +94,8 @@ type FeatureEngine struct {
 	// dirtyISINs and dirtyFeatures are ONLY written from Run() goroutine.
 	// Both tick and depth events arrive via tickCh/depthCh channels and are
 	// processed sequentially in the select loop — no mutex needed.
-	dirtyISINs     map[string]bool
-	dirtyFeatures  map[string]map[string]float64
-	snapshotTicker *time.Ticker
+	dirtyISINs    map[string]bool
+	dirtyFeatures map[string]map[string]float64
 
 	// Optional callbacks for testing (called after each event processed)
 	onTick  func(isin string)
@@ -114,13 +135,14 @@ func (e *FeatureEngine) RegisterStock(isin, symbol, sectorID string) {
 		ISIN:     isin,
 		Symbol:   symbol,
 		SectorID: sectorID,
-		Volume1m:  NewRollingSum(60*time.Second, 8192),
-		Volume5m:  NewRollingSum(300*time.Second, 32768),
-		BuyVol5m:  NewRollingSum(300*time.Second, 32768),
-		SellVol5m: NewRollingSum(300*time.Second, 32768),
-		Updates1m: NewRollingSum(60*time.Second, 8192),
-		High5m:    NewRollingExtreme(300*time.Second, true),
-		Low5m:     NewRollingExtreme(300*time.Second, false),
+		Volume1m:         NewRollingSum(60*time.Second, 8192),
+		Volume5m:         NewRollingSum(300*time.Second, 32768),
+		BuyVol5m:         NewRollingSum(300*time.Second, 32768),
+		SellVol5m:        NewRollingSum(300*time.Second, 32768),
+		Updates1m:        NewRollingSum(60*time.Second, 8192),
+		High5m:           NewRollingExtreme(300*time.Second, true),
+		Low5m:            NewRollingExtreme(300*time.Second, false),
+		BookImbalance60s: NewRollingAvg(60*time.Second, 1024),
 	}
 	e.stocks[isin] = s
 	e.market.TotalStocks = len(e.stocks)
@@ -171,17 +193,12 @@ func (e *FeatureEngine) Run(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	e.snapshotTicker = time.NewTicker(250 * time.Millisecond)
-	defer e.snapshotTicker.Stop()
-
 	for {
 		select {
 		case ev := <-e.tickCh:
 			e.handleTick(ev)
 		case ev := <-e.depthCh:
 			e.handleDepth(ev)
-		case <-e.snapshotTicker.C:
-			e.rebuildSnapshot()
 		case <-ticker.C:
 			e.handleTimer()
 		case <-ctx.Done():
@@ -218,8 +235,47 @@ func (e *FeatureEngine) handleTick(ev TickEvent) {
 		return
 	}
 
-	// Volume delta
+	// sf carries more frequent top-of-book quantities than dp, so keep them fresh
+	// on every tick even when there is no new traded volume.
+	s.TotalBidQty = ev.TotBuyQty
+	s.TotalAskQty = ev.TotSellQty
+	if ev.BidPrice > 0 {
+		s.BidPrices[0] = ev.BidPrice
+		s.BidQtys[0] = ev.BidSize
+	}
+	if ev.AskPrice > 0 {
+		s.AskPrices[0] = ev.AskPrice
+		s.AskQtys[0] = ev.AskSize
+	}
+	if ev.AvgTradePrice > 0 {
+		s.ExchVWAP = ev.AvgTradePrice
+	}
+	s.LastTradedQty = ev.LastTradedQty
+	if ev.YearHigh > 0 {
+		s.YearHigh = ev.YearHigh
+	}
+	if ev.YearLow > 0 {
+		s.YearLow = ev.YearLow
+	}
+	if ev.LowerCircuit > 0 {
+		s.LowerCircuit = ev.LowerCircuit
+	}
+	if ev.UpperCircuit > 0 {
+		s.UpperCircuit = ev.UpperCircuit
+	}
+
+	// Volume delta — detect reconnect resets where the feed restarts from a
+	// lower cumulative value. Without this, volumeDelta stays negative and
+	// all volume tracking (rolling windows, classification, slot accumulators)
+	// is silently dead until the new feed catches up to the stale cumulative.
 	volumeDelta := ev.Volume - s.CumulativeVolume
+	if ev.Volume > 0 && ev.Volume < s.CumulativeVolume {
+		// Volume reset (reconnect): rebase to the new feed's value.
+		// Treat the new ev.Volume as a fresh start — no delta for this tick.
+		log.Printf("[FeatureEngine] %s volume reset: %d → %d (rebasing)", ev.ISIN, s.CumulativeVolume, ev.Volume)
+		s.CumulativeVolume = ev.Volume
+		volumeDelta = 0
+	}
 	if volumeDelta <= 0 {
 		// Price-only update: still update LTP/OHLCV but skip volume/classification
 		s.LTP = ev.LTP
@@ -266,20 +322,24 @@ func (e *FeatureEngine) handleTick(ev TickEvent) {
 		}
 	}
 
-	// Compute VWAP
-	vwap := 0.0
-	if s.CumulativeVolume > 0 {
+	// VWAP: prefer exchange-provided (v2 parity), fall back to computed
+	vwap := s.ExchVWAP
+	if vwap == 0 && s.CumulativeVolume > 0 {
 		vwap = s.CumulativeTurnover / float64(s.CumulativeVolume)
 	}
 
 	// Delta-update market + sector
 	// Both UpdateFromStock methods read from and write to shared prev* fields
 	// on StockState. Save prev before market update, restore for sector update.
-	saved := savePrev(s)
-	e.market.UpdateFromStock(s, vwap)
-	restorePrev(s, saved)
+	// restorePrev must only run when sector update follows — otherwise market's
+	// prev* save is the correct final state.
 	if sec, ok := e.sectors[s.SectorID]; ok {
+		saved := savePrev(s)
+		e.market.UpdateFromStock(s, vwap)
+		restorePrev(s, saved)
 		sec.UpdateFromStock(s, vwap)
+	} else {
+		e.market.UpdateFromStock(s, vwap)
 	}
 
 	// Compute tick-triggered features
@@ -288,8 +348,9 @@ func (e *FeatureEngine) handleTick(ev TickEvent) {
 	featureMap := e.registry.ToMap(fv)
 	e.registry.ReleaseVector(fv)
 
-	// Update immutable snapshot
+	// Update and rebuild immutable snapshot synchronously
 	e.updateSnapshotWithFeatures(s, featureMap)
+	e.rebuildSnapshot()
 
 	// Hub broadcast (nil-safe)
 	if e.hub != nil {
@@ -320,6 +381,10 @@ func (e *FeatureEngine) handleDepth(ev DepthEvent) {
 
 	s.TotalBidQty = 0
 	s.TotalAskQty = 0
+	s.BidPrices = [5]float64{}
+	s.BidQtys = [5]int64{}
+	s.AskPrices = [5]float64{}
+	s.AskQtys = [5]int64{}
 	for i := 0; i < 5 && i < len(ev.Bids); i++ {
 		s.BidPrices[i] = ev.Bids[i].Price
 		s.BidQtys[i] = int64(ev.Bids[i].Qty)
@@ -333,14 +398,22 @@ func (e *FeatureEngine) handleDepth(ev DepthEvent) {
 	s.HasDepth = true
 	s.LastDepthTS = ev.TS
 
+	// Update book imbalance rolling average (v2 parity: 60s window of total qty ratios)
+	totalQty := s.TotalBidQty + s.TotalAskQty
+	if totalQty > 0 && s.BookImbalance60s != nil {
+		ratio := float64(s.TotalBidQty) / float64(totalQty)
+		s.BookImbalance60s.Add(ev.TS, ratio)
+	}
+
 	// Compute depth-triggered features
 	sec, _ := e.sectors[s.SectorID]
 	fv := e.registry.ComputeTriggered(s, e.market, sec, TriggerDepth)
 	featureMap := e.registry.ToMap(fv)
 	e.registry.ReleaseVector(fv)
 
-	// Update immutable snapshot
+	// Update and rebuild immutable snapshot synchronously
 	e.updateSnapshotWithFeatures(s, featureMap)
+	e.rebuildSnapshot()
 
 	// Hub broadcast (nil-safe)
 	if e.hub != nil {
@@ -473,9 +546,9 @@ func (e *FeatureEngine) rebuildSnapshot() {
 	e.dirtyFeatures = make(map[string]map[string]float64)
 }
 
-// handleTimer is a placeholder for timer-triggered features.
+// handleTimer runs on the 1s ticker — resets the tick-rate ring slot.
 func (e *FeatureEngine) handleTimer() {
-	// Placeholder for future timer-triggered features (e.g. periodic snapshots)
+	ResetTickSlot()
 }
 
 // ---------------------------------------------------------------------------
@@ -506,8 +579,8 @@ func (s *StockState) ClassifyTick(price float64, volumeDelta int64, ts time.Time
 
 	var direction int8 // 0 = unknown, 1 = buy, -1 = sell
 
-	if bid > 0 && ask > 0 {
-		// Quote Rule — depth is available
+	if bid > 0 && ask > 0 && ask > bid {
+		// Quote Rule — depth is available and book is not crossed
 		if price >= ask {
 			direction = 1
 		} else if price <= bid {

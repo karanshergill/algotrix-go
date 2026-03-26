@@ -33,3 +33,4 @@ logs/
 go.work
 go.work.sum
 team/
+v2-reference/

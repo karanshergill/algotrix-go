@@ -50,7 +50,7 @@ module.exports = {
       args: 'feed',
       cwd: '/home/me/projects/algotrix-go/engine',
       watch: false,
-      max_memory_restart: '4G',
+      max_memory_restart: '8G',
       out_file: '/tmp/go-feed-out.log',
       error_file: '/tmp/go-feed-error.log',
       cron_restart: '0 9 * * 1-5',  // restart at 9:00 AM on weekdays (fresh token)
