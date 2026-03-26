@@ -73,6 +73,7 @@ func TestEngineSnapshot_UpdateStock(t *testing.T) {
 
 func TestFeatureEngine_SnapshotUpdated(t *testing.T) {
 	e := NewFeatureEngine(nil)
+	e.SetSyncSnapshot(true)
 	e.RegisterStock("ISIN1", "SYM1", "")
 	e.session.SessionStart(time.Now())
 

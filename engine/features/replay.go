@@ -140,6 +140,9 @@ func replayTicks(engine *FeatureEngine, ticks []TickEvent) map[string]map[string
 		return nil
 	}
 
+	// Replay calls handleTick directly (no Run loop), so enable sync snapshots
+	engine.syncSnapshot = true
+
 	// Start session with the first tick's timestamp
 	engine.session.SessionStart(ticks[0].TS)
 

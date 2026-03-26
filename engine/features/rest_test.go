@@ -12,6 +12,7 @@ import (
 func setupRESTEngine(t *testing.T) (*FeatureEngine, *httptest.Server) {
 	t.Helper()
 	e := NewFeatureEngine(DefaultEngineConfig())
+	e.SetSyncSnapshot(true)
 	e.RegisterStock("INE001", "RELIANCE", "NIFTY_BANK")
 	e.RegisterStock("INE002", "TCS", "NIFTY_IT")
 	e.RegisterSector("NIFTY_BANK", []string{"INE001"})

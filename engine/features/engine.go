@@ -97,6 +97,11 @@ type FeatureEngine struct {
 	dirtyISINs    map[string]bool
 	dirtyFeatures map[string]map[string]float64
 
+	// syncSnapshot: when true, rebuildSnapshot runs inline after each event
+	// (used in tests). When false (production default), snapshots rebuild on
+	// a 250ms timer to avoid per-tick map copies under high volume.
+	syncSnapshot bool
+
 	// Optional callbacks for testing (called after each event processed)
 	onTick  func(isin string)
 	onDepth func(isin string)
@@ -184,6 +189,10 @@ func (e *FeatureEngine) SetOnTick(fn func(isin string)) { e.onTick = fn }
 // SetOnDepth sets the callback invoked after each depth event is processed.
 func (e *FeatureEngine) SetOnDepth(fn func(isin string)) { e.onDepth = fn }
 
+// SetSyncSnapshot enables synchronous snapshot rebuilds after each event.
+// Use in tests only — in production, snapshots rebuild on a 250ms timer.
+func (e *FeatureEngine) SetSyncSnapshot(on bool) { e.syncSnapshot = on }
+
 // ---------------------------------------------------------------------------
 // Run — the single-writer event loop. ONLY this goroutine mutates state.
 // ---------------------------------------------------------------------------
@@ -193,12 +202,19 @@ func (e *FeatureEngine) Run(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
+	snapshotTicker := time.NewTicker(250 * time.Millisecond)
+	defer snapshotTicker.Stop()
+
 	for {
 		select {
 		case ev := <-e.tickCh:
 			e.handleTick(ev)
 		case ev := <-e.depthCh:
 			e.handleDepth(ev)
+		case <-snapshotTicker.C:
+			if !e.syncSnapshot {
+				e.rebuildSnapshot()
+			}
 		case <-ticker.C:
 			e.handleTimer()
 		case <-ctx.Done():
@@ -274,42 +290,41 @@ func (e *FeatureEngine) handleTick(ev TickEvent) {
 		// Treat the new ev.Volume as a fresh start — no delta for this tick.
 		log.Printf("[FeatureEngine] %s volume reset: %d → %d (rebasing)", ev.ISIN, s.CumulativeVolume, ev.Volume)
 		s.CumulativeVolume = ev.Volume
+		// Rebase turnover so computed VWAP fallback stays consistent.
+		// Use ExchVWAP if available, otherwise reset to 0.
+		if s.ExchVWAP > 0 {
+			s.CumulativeTurnover = s.ExchVWAP * float64(ev.Volume)
+		} else {
+			s.CumulativeTurnover = 0
+		}
 		volumeDelta = 0
 	}
-	if volumeDelta <= 0 {
-		// Price-only update: still update LTP/OHLCV but skip volume/classification
-		s.LTP = ev.LTP
-		s.LastTickTS = ev.TS
-		if ev.LTP > s.DayHigh {
-			s.DayHigh = ev.LTP
-		}
-		if ev.LTP < s.DayLow || s.DayLow == 0 {
-			s.DayLow = ev.LTP
-		}
-	} else {
-		s.LTP = ev.LTP
-		s.LastTickTS = ev.TS
+	// Common updates for ALL ticks (price-only and volume)
+	s.LTP = ev.LTP
+	s.LastTickTS = ev.TS
+	s.UpdateCount++
+	if ev.LTP > s.DayHigh {
+		s.DayHigh = ev.LTP
+	}
+	if ev.LTP < s.DayLow || s.DayLow == 0 {
+		s.DayLow = ev.LTP
+	}
+	s.High5m.Add(ev.TS, ev.LTP)
+	s.Low5m.Add(ev.TS, ev.LTP)
+	s.Updates1m.Add(ev.TS, 1)
+
+	// Volume-specific updates (skip on price-only ticks)
+	if volumeDelta > 0 {
 		if s.DayOpen == 0 {
 			s.DayOpen = ev.LTP
 		}
-		if ev.LTP > s.DayHigh {
-			s.DayHigh = ev.LTP
-		}
-		if ev.LTP < s.DayLow || s.DayLow == 0 {
-			s.DayLow = ev.LTP
-		}
-
 		s.CumulativeVolume = ev.Volume
 		s.CumulativeTurnover += ev.LTP * float64(volumeDelta)
-		s.UpdateCount++
 
 		s.ClassifyTick(ev.LTP, volumeDelta, ev.TS)
 
 		s.Volume1m.Add(ev.TS, volumeDelta)
 		s.Volume5m.Add(ev.TS, volumeDelta)
-		s.Updates1m.Add(ev.TS, 1)
-		s.High5m.Add(ev.TS, ev.LTP)
-		s.Low5m.Add(ev.TS, ev.LTP)
 
 		// Slot volume accumulator — resets on slot boundary
 		currentSlot := timeToSlot(ev.TS)
@@ -348,9 +363,11 @@ func (e *FeatureEngine) handleTick(ev TickEvent) {
 	featureMap := e.registry.ToMap(fv)
 	e.registry.ReleaseVector(fv)
 
-	// Update and rebuild immutable snapshot synchronously
+	// Update snapshot — sync rebuild in test mode, batched via timer in production
 	e.updateSnapshotWithFeatures(s, featureMap)
-	e.rebuildSnapshot()
+	if e.syncSnapshot {
+		e.rebuildSnapshot()
+	}
 
 	// Hub broadcast (nil-safe)
 	if e.hub != nil {
@@ -411,9 +428,11 @@ func (e *FeatureEngine) handleDepth(ev DepthEvent) {
 	featureMap := e.registry.ToMap(fv)
 	e.registry.ReleaseVector(fv)
 
-	// Update and rebuild immutable snapshot synchronously
+	// Update snapshot — sync rebuild in test mode, batched via timer in production
 	e.updateSnapshotWithFeatures(s, featureMap)
-	e.rebuildSnapshot()
+	if e.syncSnapshot {
+		e.rebuildSnapshot()
+	}
 
 	// Hub broadcast (nil-safe)
 	if e.hub != nil {

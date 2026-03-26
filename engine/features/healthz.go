@@ -28,10 +28,11 @@ func RecordTick() {
 	atomic.AddInt64(&tickRing[sec], 1)
 }
 
-// ResetTickSlot resets the current second's slot (call from a 1s ticker).
+// ResetTickSlot clears the next second's slot so stale data from 60s ago
+// is gone before new ticks land in it. Called from the 1s timer.
 func ResetTickSlot() {
-	sec := time.Now().Unix() % 60
-	atomic.StoreInt64(&tickRing[sec], 0)
+	next := (time.Now().Unix() + 1) % 60
+	atomic.StoreInt64(&tickRing[next], 0)
 }
 
 func ticksLastMinute() int64 {

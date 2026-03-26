@@ -10,6 +10,7 @@ import (
 
 func TestAllFeatures_Computation(t *testing.T) {
 	e := NewFeatureEngine(DefaultEngineConfig())
+	e.SetSyncSnapshot(true)
 
 	// Register stock with baselines
 	e.RegisterStock("INE001", "RELIANCE", "NIFTY_BANK")
@@ -219,6 +220,7 @@ func waitForDepth(t *testing.T, ch <-chan string, timeout time.Duration) {
 
 func TestFullPipeline_EndToEnd(t *testing.T) {
 	e := NewFeatureEngine(DefaultEngineConfig())
+	e.SetSyncSnapshot(true)
 
 	// Register 3 stocks across 2 sectors
 	e.RegisterStock("INE001", "RELIANCE", "ENERGY")
@@ -382,6 +384,7 @@ func TestFullPipeline_EndToEnd(t *testing.T) {
 
 func TestFeatureValues_Correctness(t *testing.T) {
 	e := NewFeatureEngine(DefaultEngineConfig())
+	e.SetSyncSnapshot(true)
 	e.RegisterStock("INE001", "TEST", "SEC1")
 	e.RegisterSector("SEC1", []string{"INE001"})
 
@@ -440,6 +443,7 @@ func TestFeatureValues_Correctness(t *testing.T) {
 
 func TestConcurrentSnapshotRead(t *testing.T) {
 	e := NewFeatureEngine(DefaultEngineConfig())
+	e.SetSyncSnapshot(true)
 	e.RegisterStock("INE001", "RELIANCE", "SEC1")
 	e.RegisterSector("SEC1", []string{"INE001"})
 
@@ -515,6 +519,7 @@ func TestConcurrentSnapshotRead(t *testing.T) {
 
 func TestSessionRestart(t *testing.T) {
 	e := NewFeatureEngine(DefaultEngineConfig())
+	e.SetSyncSnapshot(true)
 	e.RegisterStock("INE001", "RELIANCE", "SEC1")
 	e.RegisterSector("SEC1", []string{"INE001"})
 
@@ -625,6 +630,7 @@ func TestSessionRestart(t *testing.T) {
 func TestEdgeCases(t *testing.T) {
 	t.Run("PrevClose_Zero", func(t *testing.T) {
 		e := NewFeatureEngine(DefaultEngineConfig())
+		e.SetSyncSnapshot(true)
 		e.RegisterStock("INE001", "TEST", "SEC1")
 		e.RegisterSector("SEC1", []string{"INE001"})
 		// PrevClose defaults to 0 — do NOT set it
@@ -664,6 +670,7 @@ func TestEdgeCases(t *testing.T) {
 
 	t.Run("NoDepth_BookFeaturesNotReady", func(t *testing.T) {
 		e := NewFeatureEngine(DefaultEngineConfig())
+		e.SetSyncSnapshot(true)
 		e.RegisterStock("INE001", "TEST", "SEC1")
 		e.RegisterSector("SEC1", []string{"INE001"})
 		e.Stock("INE001").PrevClose = 100.0
@@ -698,6 +705,7 @@ func TestEdgeCases(t *testing.T) {
 
 	t.Run("NoVolumeSlot_VolumeSpikeNotReady", func(t *testing.T) {
 		e := NewFeatureEngine(DefaultEngineConfig())
+		e.SetSyncSnapshot(true)
 		e.RegisterStock("INE001", "TEST", "SEC1")
 		e.RegisterSector("SEC1", []string{"INE001"})
 		s := e.Stock("INE001")
@@ -732,6 +740,7 @@ func TestEdgeCases(t *testing.T) {
 
 	t.Run("ZeroVolumeTick", func(t *testing.T) {
 		e := NewFeatureEngine(DefaultEngineConfig())
+		e.SetSyncSnapshot(true)
 		e.RegisterStock("INE001", "TEST", "SEC1")
 		e.RegisterSector("SEC1", []string{"INE001"})
 		s := e.Stock("INE001")
@@ -763,9 +772,9 @@ func TestEdgeCases(t *testing.T) {
 		if s.CumulativeVolume != 1000 {
 			t.Errorf("CumulativeVolume = %d, want 1000 (unchanged after zero-volume tick)", s.CumulativeVolume)
 		}
-		// UpdateCount should still be 1 (only the first tick incremented it)
-		if s.UpdateCount != 1 {
-			t.Errorf("UpdateCount = %d, want 1 (zero-volume tick should not increment)", s.UpdateCount)
+		// UpdateCount should be 2 (price-only ticks are still feed updates)
+		if s.UpdateCount != 2 {
+			t.Errorf("UpdateCount = %d, want 2 (price-only ticks still count as updates)", s.UpdateCount)
 		}
 		// DayHigh should reflect the new price
 		if s.DayHigh != 107.0 {
