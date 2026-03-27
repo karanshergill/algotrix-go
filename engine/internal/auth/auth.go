@@ -1,9 +1,13 @@
 package auth
 
 import (
+    "encoding/base64"
     "encoding/json"
     "fmt"
+    "log"
     "os"
+    "os/exec"
+    "strings"
     "time"
 
     fyersgosdk "github.com/FyersDev/fyers-go-sdk"
@@ -60,7 +64,7 @@ func New(cfg config.FyersConfig) *Auth {
 		a.token = &token
 		if a.isExpired() {
 			fmt.Println("Token expired. Attempting refresh...")
-			if err := a.Refresh(); err != nil {
+			if err := a.refreshWithRetry(); err != nil {
 				a.token = nil
 				return fmt.Errorf("token expired and refresh failed: %w", err)
 			}
@@ -122,11 +126,79 @@ func New(cfg config.FyersConfig) *Auth {
 		if a.token == nil {
 			return true
 		}
+		if exp, err := jwtExp(a.token.AccessToken); err == nil {
+			return time.Now().Unix() >= exp-300
+		}
+		// Fallback: old day-comparison check if JWT parsing fails.
 		now := time.Now()
 		created := a.token.CreatedAt
 		return created.Year() != now.Year() ||
 			created.Month() != now.Month() ||
 			created.Day() != now.Day()
+	}
+
+	// jwtExp extracts the exp claim from a JWT without a library.
+	func jwtExp(token string) (int64, error) {
+		parts := strings.SplitN(token, ".", 3)
+		if len(parts) < 2 {
+			return 0, fmt.Errorf("not a JWT")
+		}
+		payload := parts[1]
+		// JWT uses base64url without padding.
+		if m := len(payload) % 4; m != 0 {
+			payload += strings.Repeat("=", 4-m)
+		}
+		decoded, err := base64.URLEncoding.DecodeString(payload)
+		if err != nil {
+			return 0, fmt.Errorf("decode JWT payload: %w", err)
+		}
+		var claims struct {
+			Exp int64 `json:"exp"`
+		}
+		if err := json.Unmarshal(decoded, &claims); err != nil {
+			return 0, fmt.Errorf("parse JWT claims: %w", err)
+		}
+		if claims.Exp == 0 {
+			return 0, fmt.Errorf("no exp claim in JWT")
+		}
+		return claims.Exp, nil
+	}
+
+	func (a *Auth) refreshWithRetry() error {
+		const maxRetries = 5
+		var lastErr error
+		for i := 0; i < maxRetries; i++ {
+			lastErr = a.Refresh()
+			if lastErr == nil {
+				return nil
+			}
+			backoff := time.Duration(1<<uint(i)) * time.Second
+			log.Printf("refresh attempt %d/%d failed: %v (retrying in %v)", i+1, maxRetries, lastErr, backoff)
+			time.Sleep(backoff)
+		}
+		log.Printf("SDK refresh failed after %d attempts, trying bash fallback...", maxRetries)
+		return a.bashFallbackRefresh()
+	}
+
+	func (a *Auth) bashFallbackRefresh() error {
+		cmd := exec.Command("./refresh_token.sh")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("bash fallback failed: %w (output: %s)", err, output)
+		}
+		data, err := os.ReadFile(a.cfg.TokenPath)
+		if err != nil {
+			return fmt.Errorf("re-read token after bash fallback: %w", err)
+		}
+		var token Token
+		if err := json.Unmarshal(data, &token); err != nil {
+			return fmt.Errorf("parse token after bash fallback: %w", err)
+		}
+		if token.AccessToken == "" {
+			return fmt.Errorf("bash fallback produced empty access_token")
+		}
+		a.token = &token
+		return nil
 	}
 	
 	func (a *Auth) parseAndSave(resp string) error {
